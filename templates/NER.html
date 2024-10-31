@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="content">
+        <div class="left-panel">
+            <h2>Input Medical Summary</h2>
+            <textarea id="medical-summary" rows="8" placeholder="Enter medical summary here..."></textarea>
+            <br>
+            <button id="compute-btn" class="fancy-button"><i class="fas fa-magic"></i> Compute</button>
+        </div>
+        <div class="right-panel">
+            <h2>NER Result</h2>
+            <div id="ner-result" class="result-box">
+                <p>Output will appear here...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function () {
+            // NER功能处理
+            $('#compute-btn').click(function () {
+                const text = $('#medical-summary').val();
+                $.ajax({
+                    url: '/process',
+                    type: 'POST',
+                    data: { text: text },
+                    success: function (response) {
+                        $('#ner-result').html(response.result);
+                    }
+                });
+            });
+        });
+    </script>
+{% endblock %}

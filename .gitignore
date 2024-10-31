@@ -1,0 +1,7 @@
+# 忽略 Python 虚拟环境
+venv/
+
+# 忽略其他可能不需要的文件
+*.pyc
+__pycache__/
+.DS_Store
