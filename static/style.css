@@ -155,7 +155,7 @@ textarea:focus {
     min-height: 150px;
     font-size: 1em;
     white-space: pre-wrap;
-    line-height: 1.5; /* 调整行距使得内容更紧凑 */
+    line-height: 2; /* 调整行距使得内容更紧凑 */
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
 }
 

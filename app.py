@@ -5,7 +5,8 @@ import random
 app = Flask(__name__)
 
 # 加载模型和pipeline
-nlp_pipeline = pipeline("token-classification", model="Clinical-AI-Apollo/Medical-NER", aggregation_strategy='simple')
+nlp_pipeline = pipeline("token-classification",
+                        model="Clinical-AI-Apollo/Medical-NER", aggregation_strategy='simple')
 
 
 @app.route('/')
@@ -73,8 +74,12 @@ def process():
     result_str = ""
     for segment in segments:
         if segment['label']:
-            result_str += f'<span style="background-color:{segment["color"]}; padding: 5px 10px; margin: 2px; border-radius: 25px; box-shadow: 0px 1px 5px rgba(0, 0, 0, 0.2); font-weight: bold;">'
-            result_str += f'{segment["text"]} <span style="background-color:rgba(0, 0, 0, 0.1); color: #fff; padding: 2px 4px; border-radius: 5px; font-size: 0.8em;">{segment["label"]}</span>'
+            result_str += f'<span style="background-color:{segment["color"]}; ' \
+                          f'padding: 5px 10px; margin: 2px; border-radius: 25px; ' \
+                          f'box-shadow: 0px 1px 5px rgba(0, 0, 0, 0.2); font-weight: bold;">'
+            result_str += f'{segment["text"]} <span style="background-color:rgba(0, 0, 0, 0.1); ' \
+                          f'color: #fff; padding: 2px 4px; border-radius: 5px; font-size: 0.8em;">' \
+                          f'{segment["label"]}</span>'
             result_str += '</span>'
         else:
             result_str += segment['text']

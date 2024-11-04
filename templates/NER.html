@@ -4,7 +4,7 @@
     <div class="content">
         <div class="left-panel">
             <h2>Input Medical Summary</h2>
-            <textarea id="medical-summary" rows="8" placeholder="Enter medical summary here..."></textarea>
+            <textarea id="medical-summary" rows="8" placeholder="Enter medical summary here..." oninput="autoResize(this)"></textarea>
             <br>
             <button id="compute-btn" class="fancy-button"><i class="fas fa-magic"></i> Compute</button>
         </div>
@@ -31,5 +31,11 @@
                 });
             });
         });
+
+        // 自动调整输入框高度
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';  // 先重置高度
+            textarea.style.height = (textarea.scrollHeight) + 'px';  // 根据内容设置新的高度
+        }
     </script>
 {% endblock %}
