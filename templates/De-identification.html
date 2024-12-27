@@ -1,8 +1,286 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <div class="content">
-        <h2>De-identification Section</h2>
-        <p>De-identification functionality will be implemented here...</p>
+<style>
+    /* 弹窗基础样式 */
+    .modal {
+        display: none;       /* 默认不显示 */
+        position: fixed;
+        z-index: 9999;       /* 保证在最前端 */
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;      /* 如果内容超出屏幕则滚动 */
+        background-color: rgba(0,0,0,0.4); /* 半透明背景 */
+    }
+
+    /* 弹窗内容盒子 */
+    .modal-content {
+        background-color: #fefefe;
+        margin: 10% auto;    /* 让弹窗居中 */
+        padding: 20px;
+        border: 1px solid #888;
+        width: 50%;
+        border-radius: 8px;
+        position: relative;
+    }
+
+    /* 关闭按钮 */
+    .close-modal {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .close-modal:hover,
+    .close-modal:focus {
+        color: #000;
+        text-decoration: none;
+    }
+
+    /* 布局 */
+    .content {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        margin: 20px;
+    }
+
+    .left-panel, .right-panel {
+        flex: 0 0 48%;
+        box-sizing: border-box;
+    }
+
+    textarea {
+        width: 100%;
+        resize: none;
+    }
+
+    .result-box {
+        min-height: 150px;
+        border: 1px solid #ccc;
+        padding: 10px;
+        border-radius: 5px;
+    }
+
+    /* 按钮样式（可自行调整） */
+    .fancy-button {
+        background-color: #4CAF50;
+        border: none;
+        color: white;
+        padding: 10px 16px;
+        text-align: center;
+        cursor: pointer;
+        border-radius: 4px;
+        margin-top: 10px;
+    }
+
+    .fancy-button:hover {
+        background-color: #45a049;
+    }
+
+    /* 转圈等待动画 */
+    .spinner {
+        display: none; /* 默认不显示 */
+        border: 8px solid #f3f3f3; /* Light grey */
+        border-top: 8px solid #3498db; /* Blue */
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        animation: spin 2s linear infinite;
+        margin: 20px auto;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
+<div class="content">
+    <!-- 左侧输入 -->
+    <div class="left-panel">
+        <h2>Input Text for De-identification</h2>
+        <textarea id="deid-input" rows="8" placeholder="Enter medical summary here..." oninput="autoResize(this)"></textarea>
+        <br>
+        <button id="configure-deid-btn" class="fancy-button">
+            <i class="fas fa-magic"></i> Configure De-identification
+        </button>
     </div>
+    <!-- 右侧输出 -->
+    <div class="right-panel">
+        <h2>De-identified Result</h2>
+        <div id="deid-result" class="result-box">
+            <p>Result will appear here...</p>
+        </div>
+    </div>
+</div>
+
+<!-- 弹窗窗口 -->
+<div id="deid-config-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h3>De-identification Configuration</h3>
+        <div id="spinner" class="spinner"></div>
+        <div id="deid-config" style="display:none;">
+            <p>Select which entity groups to de-identify and choose a strategy:</p>
+            <table style="width:100%;">
+                <thead>
+                <tr>
+                    <th>Entity Group</th>
+                    <th>Strategy</th>
+                </tr>
+                </thead>
+                <tbody id="config-table-body">
+                <!-- 动态生成配置选项 -->
+                </tbody>
+            </table>
+            <button id="apply-deid-btn" class="fancy-button">Apply De-identification</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        let originalText = "";
+        let entities = [];
+        let entityGroups = [];
+        let userStrategies = {}; // 记忆用户的配置
+
+        // 点击“Configure De-identification”按钮
+        $('#configure-deid-btn').click(function () {
+            const text = $('#deid-input').val().trim();
+            if (text === "") {
+                alert("Please enter some text for de-identification.");
+                return;
+            }
+
+            // 显示弹窗
+            $('#deid-config-modal').css('display', 'block');
+
+            // 显示spinner，隐藏配置内容
+            $('#spinner').show();
+            $('#deid-config').hide();
+
+            // 发送文本到后端进行NER处理
+            $.ajax({
+                url: '/process_deid',
+                type: 'POST',
+                data: { text: text },
+                success: function (response) {
+                    originalText = response.original_text;
+                    entities = response.entities;
+                    entityGroups = response.entity_groups;
+
+                    // 如果有实体，显示配置选项
+                    if (entityGroups.length > 0) {
+                        renderEntityConfig(entityGroups);
+                    } else {
+                        $('#spinner').hide();
+                        $('#deid-config').html("<p>No entities found. Please try another text or check your NER model.</p>").show();
+                    }
+                },
+                error: function () {
+                    $('#spinner').hide();
+                    $('#deid-config').html("<p>An error occurred while processing the text. Please try again.</p>").show();
+                }
+            });
+        });
+
+        // 显示弹窗
+        function openModal() {
+            $('#deid-config-modal').css('display', 'block');
+        }
+
+        // 关闭弹窗
+        $('.close-modal').click(function() {
+            $('#deid-config-modal').css('display', 'none');
+        });
+
+        // 点击窗口背景也可关闭弹窗
+        $(window).click(function(event) {
+            let modal = document.getElementById('deid-config-modal');
+            if (event.target == modal) {
+                $('#deid-config-modal').css('display', 'none');
+            }
+        });
+
+        // 动态渲染实体组配置
+        function renderEntityConfig(groups) {
+            let html = "";
+            groups.forEach(function(g) {
+                // 检查是否有之前的策略选择
+                let selectedStrategy = userStrategies[g] || "none";
+                html += `
+                <tr>
+                    <td>${g}</td>
+                    <td>
+                        <select class="strategy-select" data-group="${g}">
+                            <option value="none" ${selectedStrategy === "none" ? "selected" : ""}>None</option>
+                            <option value="delete" ${selectedStrategy === "delete" ? "selected" : ""}>Delete</option>
+                            <option value="generalize" ${selectedStrategy === "generalize" ? "selected" : ""}>Generalize</option>
+                            <option value="pseudonymize" ${selectedStrategy === "pseudonymize" ? "selected" : ""}>Pseudonymize</option>
+                        </select>
+                    </td>
+                </tr>
+            `;
+            });
+
+            $('#config-table-body').html(html);
+
+            // 隐藏spinner，显示配置内容
+            $('#spinner').hide();
+            $('#deid-config').show();
+        }
+
+        // 点击“Apply De-identification”按钮
+        $('#apply-deid-btn').click(function () {
+            let strategies = {};
+            $('.strategy-select').each(function () {
+                const group = $(this).data('group');
+                const strategy = $(this).val();
+                if (strategy !== "none") {
+                    strategies[group] = strategy;
+                    userStrategies[group] = strategy; // 记忆用户选择
+                } else {
+                    delete userStrategies[group]; // 移除未选择的策略
+                }
+            });
+
+            if (Object.keys(strategies).length === 0) {
+                alert("Please select at least one de-identification strategy.");
+                return;
+            }
+
+            // 发送策略和实体信息到后端应用去标识化
+            $.ajax({
+                url: '/apply_deid',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    original_text: originalText,
+                    strategies: strategies,
+                    entities: entities
+                }),
+                success: function(response) {
+                    $('#deid-result').html("<p>" + response.deidentified_text + "</p>");
+                    // 关闭弹窗
+                    $('#deid-config-modal').css('display', 'none');
+                },
+                error: function () {
+                    alert("An error occurred while applying de-identification. Please try again.");
+                }
+            });
+        });
+    });
+
+    // 自动调整输入框高度
+    function autoResize(textarea) {
+        textarea.style.height = 'auto';  // 先重置高度
+        textarea.style.height = (textarea.scrollHeight) + 'px';  // 根据内容设置新的高度
+    }
+</script>
 {% endblock %}

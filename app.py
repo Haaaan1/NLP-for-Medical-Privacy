@@ -14,11 +14,9 @@ nlp_pipeline = pipeline("token-classification",
 def ner():
     return render_template('NER.html', title="NER - Medical Data Anonymization")
 
-
 @app.route('/deidentification')
 def deidentification():
     return render_template('De-identification.html', title="De-identification - Medical Data Anonymization")
-
 
 @app.route('/about')
 def about():
@@ -85,6 +83,63 @@ def process():
             result_str += segment['text']
 
     return jsonify({'result': result_str})
+
+
+@app.route('/process_deid', methods=['POST'])
+def process_deid():
+    text = request.form['text']
+    ner_results = nlp_pipeline(text)
+
+    # 将识别到的实体信息整理成列表, 并同时返回给前端，便于选择策略
+    # 格式示例：[{entity_group: "AGE", start:10, end:13, text:"17-year-old"}, ...]
+    entities = []
+    for entity in ner_results:
+        entities.append({
+            'entity_group': entity['entity_group'],
+            'start': entity['start'],
+            'end': entity['end'],
+            'text': text[entity['start']:entity['end']]
+        })
+
+    # 按entity_group分类
+    entity_groups = list(set([e['entity_group'] for e in entities]))
+
+    return jsonify({'entities': entities, 'entity_groups': entity_groups, 'original_text': text})
+
+
+@app.route('/apply_deid', methods=['POST'])
+def apply_deid():
+    # 前端会传递:
+    # original_text: 原文
+    # strategies: {entity_group: selected_strategy}
+    # 例如: {"AGE": "delete", "DATE": "generalize", ...}
+    data = request.get_json()
+    original_text = data['original_text']
+    strategies = data['strategies']
+    entities = data['entities']
+
+    # 根据策略对原文进行替换，这里简单示例
+    # 假设：
+    # - delete策略会将对应文本替换为"[REDACTED]"
+    # - generalize策略这里简单做一个示例（比如用"X"替代字符）
+    # - pseudonymize策略以"[PSEUDONYM]"替代
+    # 实际使用时应根据具体需求实现相应逻辑。
+    replaced_text = original_text
+    # 为了避免多次替换时的索引问题，我们从后向前替换
+    for ent in sorted(entities, key=lambda x: x['start'], reverse=True):
+        eg = ent['entity_group']
+        if eg in strategies:
+            strategy = strategies[eg]
+            if strategy == "delete":
+                replaced_text = replaced_text[:ent['start']] + "[REDACTED]" + replaced_text[ent['end']:]
+            elif strategy == "generalize":
+                # 简单泛化，这里全部替换为相同长度的‘X’
+                length = ent['end'] - ent['start']
+                replaced_text = replaced_text[:ent['start']] + "X"*length + replaced_text[ent['end']:]
+            elif strategy == "pseudonymize":
+                replaced_text = replaced_text[:ent['start']] + "[PSEUDONYM]" + replaced_text[ent['end']:]
+
+    return jsonify({'deidentified_text': replaced_text})
 
 
 if __name__ == '__main__':
