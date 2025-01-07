@@ -1,38 +1,59 @@
 from flask import Flask, render_template, request, jsonify
 from transformers import pipeline
 import random
+import re
+from datetime import datetime
+from dateutil import parser
 
 app = Flask(__name__)
 
-# 加载模型和pipeline
-nlp_pipeline = pipeline("token-classification",
-                        model="Clinical-AI-Apollo/Medical-NER", aggregation_strategy='simple')
+# Load model and pipeline
+nlp_pipeline = pipeline(
+    "token-classification",
+    model="Clinical-AI-Apollo/Medical-NER",
+    aggregation_strategy='simple'
+)
 
 
 @app.route('/')
 @app.route('/ner')
 def ner():
+    """
+    Render the NER page.
+    """
     return render_template('NER.html', title="NER - Medical Data Anonymization")
+
 
 @app.route('/deidentification')
 def deidentification():
+    """
+    Render the De-identification page.
+    """
     return render_template('De-identification.html', title="De-identification - Medical Data Anonymization")
+
 
 @app.route('/about')
 def about():
+    """
+    Render the About page.
+    """
     return render_template('About.html', title="About - Medical Data Anonymization")
 
 
 @app.route('/process', methods=['POST'])
 def process():
+    """
+    Handle NER highlighting for the input text,
+    return the result with colored HTML spans.
+    """
     text = request.form['text']
     ner_results = nlp_pipeline(text)
 
-    # 用于处理重叠的标记
+    # Prepare segments for highlighting
     segments = []
     current_pos = 0
 
-    # 记录每个标签的颜色
+    # Color palette and label-colors mapping
     label_colors = {}
     COLOR_PALETTE = [
         "#e0c3fc", "#bde0fe", "#ffccf9", "#ffd6a5", "#caffbf", "#9bf6ff",
@@ -40,6 +61,10 @@ def process():
     ]
 
     def assign_color(label):
+        """
+        Assign color for each entity group (label).
+        If out of palette, create random color.
+        """
         if label not in label_colors:
             if len(label_colors) < len(COLOR_PALETTE):
                 label_colors[label] = COLOR_PALETTE[len(label_colors)]
@@ -47,37 +72,45 @@ def process():
                 label_colors[label] = f'#{random.randint(0, 0xFFFFFF):06x}'
         return label_colors[label]
 
+    # Sort by 'start' to ensure sequential processing
     ner_results = sorted(ner_results, key=lambda x: x['start'])
 
+    # Build segments
     for entity in ner_results:
         start, end = entity['start'], entity['end']
         label = entity['entity_group']
         label_color = assign_color(label)
 
-        # 添加当前未被标记的文本部分
         if current_pos < start:
             segments.append({'text': text[current_pos:start], 'label': None})
 
-        # 添加当前标记的文本部分
-        segments.append({'text': text[start:end], 'label': label, 'color': label_color})
+        segments.append({
+            'text': text[start:end],
+            'label': label,
+            'color': label_color
+        })
 
-        # 更新当前位置
         current_pos = end
 
-    # 添加最后未被标记的部分
+    # Append any leftover text after the last entity
     if current_pos < len(text):
         segments.append({'text': text[current_pos:], 'label': None})
 
-    # 根据段落生成HTML
+    # Convert segments into HTML
     result_str = ""
     for segment in segments:
         if segment['label']:
-            result_str += f'<span style="background-color:{segment["color"]}; ' \
-                          f'padding: 5px 10px; margin: 2px; border-radius: 25px; ' \
-                          f'box-shadow: 0px 1px 5px rgba(0, 0, 0, 0.2); font-weight: bold;">'
-            result_str += f'{segment["text"]} <span style="background-color:rgba(0, 0, 0, 0.1); ' \
-                          f'color: #fff; padding: 2px 4px; border-radius: 5px; font-size: 0.8em;">' \
-                          f'{segment["label"]}</span>'
+            result_str += (
+                f'<span style="background-color:{segment["color"]}; '
+                f'padding: 5px 10px; margin: 2px; border-radius: 25px; '
+                f'box-shadow: 0px 1px 5px rgba(0, 0, 0, 0.2); font-weight: bold;">'
+            )
+            result_str += (
+                f'{segment["text"]} '
+                f'<span style="background-color:rgba(0, 0, 0, 0.1); '
+                f'color: #fff; padding: 2px 4px; border-radius: 5px; font-size: 0.8em;">'
+                f'{segment["label"]}</span>'
+            )
             result_str += '</span>'
         else:
             result_str += segment['text']
@@ -87,11 +120,16 @@ def process():
 
 @app.route('/process_deid', methods=['POST'])
 def process_deid():
+    """
+    For de-identification page:
+    1) Run NER on the input text.
+    2) Build a list of recognized entities.
+    3) Return them to the front-end for user strategy selection.
+    """
     text = request.form['text']
     ner_results = nlp_pipeline(text)
 
-    # 将识别到的实体信息整理成列表, 并同时返回给前端，便于选择策略
-    # 格式示例：[{entity_group: "AGE", start:10, end:13, text:"17-year-old"}, ...]
+    # Collect entities in a structured format
     entities = []
     for entity in ner_results:
         entities.append({
@@ -101,46 +139,242 @@ def process_deid():
             'text': text[entity['start']:entity['end']]
         })
 
-    # 按entity_group分类
+    # Also return all distinct entity groups
     entity_groups = list(set([e['entity_group'] for e in entities]))
 
-    return jsonify({'entities': entities, 'entity_groups': entity_groups, 'original_text': text})
+    return jsonify({
+        'entities': entities,
+        'entity_groups': entity_groups,
+        'original_text': text
+    })
 
+
+##############################
+# Helper functions for age/date generalization
+##############################
+
+def generalize_age(age_str, level="mild"):
+    """
+    Generalize age numbers within a string using the specified level.
+    Only age numbers (e.g., "17-year-old", "17 years old", "age 17") are modified.
+    The rest of the string is preserved.
+
+    Parameters:
+    - age_str: str, input string containing age information.
+    - level: str, one of "mild", "moderate", "severe".
+
+    Returns:
+    - str, the age generalized string. Returns "[AGE]" if no valid age is found.
+    """
+    # Define the regular expression pattern:
+    # 1. Match numbers followed by age-related words.
+    # 2. Match "age" prefix followed by numbers, with possible ":" or "-" separators.
+    pattern = re.compile(
+        r'\b(\d+)\s*(?:-year-old|years old|years-old|yr-old|years|year|yrs)\b'
+        r'|\bage\s*[:\-]?\s*(\d+)\b',
+        re.IGNORECASE
+    )
+
+    def replace_age(match):
+        # match.group(1): Case where number is followed by age-related words.
+        # match.group(2): Case where "age" is followed by a number.
+        num_str = match.group(1) if match.group(1) else match.group(2)
+        if not num_str:
+            return "[AGE]"
+        try:
+            original_age = int(num_str)
+        except ValueError:
+            return "[AGE]"
+
+        # Determine fluctuation range based on the level
+        if level == "mild":
+            fluctuation = random.randint(-1, 1)  # ±1 year
+        elif level == "moderate":
+            fluctuation = random.randint(-2, 2)  # ±2 years
+        elif level == "severe":
+            fluctuation = random.randint(-5, 5)  # ±5 years
+        else:
+            fluctuation = random.randint(-1, 1)  # Default to mild
+
+        new_age = original_age + fluctuation
+        new_age = max(new_age, 0)  # Ensure age is not negative
+
+        # Rebuild the matched string, preserving the surrounding parts
+        if match.group(1):
+            # Case 1: Number followed by age-related words (e.g., "17-year-old")
+            suffix = match.group(0)[len(match.group(1)):]
+            return f"{new_age}{suffix}"
+        elif match.group(2):
+            # Case 2: "age" prefix followed by number (e.g., "age 17" or "age: 17")
+            prefix = match.group(0)[:match.group(0).lower().find(match.group(2).lower())]
+            return f"{prefix}{new_age}"
+        else:
+            return "[AGE]"
+
+    # Use re.sub to perform the replacement
+    generalized_str = pattern.sub(replace_age, age_str)
+
+    # If no replacement occurred, return the default value "[AGE]"
+    if generalized_str == age_str:
+        return "[AGE]"
+    return generalized_str
+
+
+def generalize_date(date_str, level="mild"):
+    """
+    Generalize a date string with various levels of obfuscation:
+      - mild: Keep 'year-month' if available (e.g., "2022-04"), or "2022-XX" if no month is provided.
+      - moderate: Keep only the year (e.g., "2022").
+      - severe: Transform to a wide year range (e.g., "2020-2030").
+    
+    Handles multiple input formats and partial dates.
+    """
+    try:
+        # Try parsing the date using dateutil
+        parsed_date = parser.parse(date_str, fuzzy=True)
+        year = parsed_date.year
+        # If parsed date has a valid month, use it, else None
+        month = parsed_date.month if parsed_date.month else None
+
+        if level == "mild":
+            # Generalize to "year-month" if month exists; otherwise, "year-XX"
+            return f"{year}-{month:02d}" if month else f"{year}-XX"
+        elif level == "moderate":
+            # Generalize to year only
+            return f"{year}"
+        elif level == "severe":
+            # Create a wide range for year
+            min_year = year - 2
+            max_year = year + 8
+            return f"{min_year}-{max_year}"
+        else:
+            return "[DATE]"  # Default fallback
+    except ValueError:
+        # Fallback if the date string cannot be parsed
+        return "[DATE]"
+    
 
 @app.route('/apply_deid', methods=['POST'])
 def apply_deid():
-    # 前端会传递:
-    # original_text: 原文
-    # strategies: {entity_group: selected_strategy}
-    # 例如: {"AGE": "delete", "DATE": "generalize", ...}
     data = request.get_json()
     original_text = data['original_text']
     strategies = data['strategies']
     entities = data['entities']
 
-    # 根据策略对原文进行替换，这里简单示例
-    # 假设：
-    # - delete策略会将对应文本替换为"[REDACTED]"
-    # - generalize策略这里简单做一个示例（比如用"X"替代字符）
-    # - pseudonymize策略以"[PSEUDONYM]"替代
-    # 实际使用时应根据具体需求实现相应逻辑。
     replaced_text = original_text
-    # 为了避免多次替换时的索引问题，我们从后向前替换
+
+    # Counters for pseudonymize
+    pseudonym_counters = {}
+
+    def do_replacement(orig, start, end, replacement):
+        """
+        Replaces the substring [start:end] with 'replacement'.
+        We'll do minimal spacing checks around the replaced region,
+        but first clamp start/end to avoid IndexError.
+        """
+        # Clamp indexes to be within [0, len(orig)]
+        if start < 0:
+            start = 0
+        if end < 0:
+            end = 0
+        if start > len(orig):
+            start = len(orig)
+        if end > len(orig):
+            end = len(orig)
+        if start >= end:
+            # no valid range to replace
+            return orig
+
+        left_part = orig[:start]
+        right_part = orig[end:]
+
+        # Check character before 'start' if exists
+        if start > 0:
+            # Only if it's not whitespace/punctuation, prepend a space
+            prev_char = orig[start-1]
+            if not re.match(r'[\s,.!?;:]', prev_char):
+                replacement = " " + replacement
+
+        # Check character at 'end' if it's within range
+        if end < len(orig):
+            # If the next char is not whitespace/punctuation, add a trailing space
+            next_char = orig[end]
+            if not re.match(r'[\s,.!?;:]', next_char):
+                replacement = replacement + " "
+
+        return left_part + replacement + right_part
+
+    # Sort entities reverse by start index
     for ent in sorted(entities, key=lambda x: x['start'], reverse=True):
         eg = ent['entity_group']
-        if eg in strategies:
-            strategy = strategies[eg]
-            if strategy == "delete":
-                replaced_text = replaced_text[:ent['start']] + "[REDACTED]" + replaced_text[ent['end']:]
-            elif strategy == "generalize":
-                # 简单泛化，这里全部替换为相同长度的‘X’
-                length = ent['end'] - ent['start']
-                replaced_text = replaced_text[:ent['start']] + "X"*length + replaced_text[ent['end']:]
-            elif strategy == "pseudonymize":
-                replaced_text = replaced_text[:ent['start']] + "[PSEUDONYM]" + replaced_text[ent['end']:]
+        if eg not in strategies:
+            continue
+
+        strategy = strategies[eg]
+        start, end = ent['start'], ent['end']
+        text_slice = ent['text']
+
+        if strategy == "delete":
+            replaced_text = do_replacement(replaced_text, start, end, "[REDACTED]")
+            continue
+
+        elif strategy == "pseudonymize":
+            if eg not in pseudonym_counters:
+                pseudonym_counters[eg] = 0
+            pseudonym_counters[eg] += 1
+
+            letter_index = pseudonym_counters[eg] - 1
+            if letter_index < 26:
+                letter = chr(65 + letter_index)  # 'A' etc.
+            else:
+                letter = f"X{letter_index}"
+
+            new_label = f"{eg}_{letter}"
+            replaced_text = do_replacement(replaced_text, start, end, new_label)
+            continue
+
+        elif strategy.startswith("generalize"):
+            # e.g. "generalize_mild" / "generalize_moderate" / "generalize_severe"
+            if eg in ["AGE"]:
+                level = "mild"
+                if strategy == "generalize_moderate":
+                    level = "moderate"
+                elif strategy == "generalize_severe":
+                    level = "severe"
+                new_str = generalize_age(text_slice, level)
+                replaced_text = do_replacement(replaced_text, start, end, new_str)
+
+            elif eg == "DATE":
+                level = "mild"
+                if strategy == "generalize_moderate":
+                    level = "moderate"
+                elif strategy == "generalize_severe":
+                    level = "severe"
+                new_str = generalize_date(text_slice, level)
+                replaced_text = do_replacement(replaced_text, start, end, new_str)
+
+            else:
+                # fallback
+                length = end - start
+                x_str = "X" * length
+                replaced_text = do_replacement(replaced_text, start, end, x_str)
+
+            continue
+
+        elif strategy == "generalize":
+            length = end - start
+            x_str = "X" * length
+            replaced_text = do_replacement(replaced_text, start, end, x_str)
+            continue
+
+        # else: unrecognized strategy => skip
+
+    # Post-processing to fix punctuation spacing, multiple spaces
+    replaced_text = re.sub(r'\s+([,.:;!?])', r'\1', replaced_text)
+    replaced_text = re.sub(r'([,.:;!?])([A-Za-z0-9])', r'\1 \2', replaced_text)
+    replaced_text = re.sub(r'\s+', ' ', replaced_text).strip()
 
     return jsonify({'deidentified_text': replaced_text})
-
 
 if __name__ == '__main__':
     app.run(debug=True)

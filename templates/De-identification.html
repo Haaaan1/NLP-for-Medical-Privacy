@@ -2,31 +2,28 @@
 
 {% block content %}
 <style>
-    /* 弹窗基础样式 */
+    /* 弹窗基础样式：让弹窗更靠上 */
     .modal {
-        display: none;       /* 默认不显示 */
+        display: none;
         position: fixed;
-        z-index: 9999;       /* 保证在最前端 */
+        z-index: 9999;
         left: 0;
         top: 0;
         width: 100%;
         height: 100%;
-        overflow: auto;      /* 如果内容超出屏幕则滚动 */
-        background-color: rgba(0,0,0,0.4); /* 半透明背景 */
+        overflow: auto;
+        background-color: rgba(0,0,0,0.4);
     }
-
-    /* 弹窗内容盒子 */
     .modal-content {
         background-color: #fefefe;
-        margin: 10% auto;    /* 让弹窗居中 */
+        margin: 5% auto; /* 原先10% => 5%，弹窗更靠上 */
         padding: 20px;
         border: 1px solid #888;
         width: 50%;
         border-radius: 8px;
         position: relative;
+        box-shadow: 0 0 10px rgba(0,0,0,0.3);
     }
-
-    /* 关闭按钮 */
     .close-modal {
         color: #aaa;
         float: right;
@@ -34,7 +31,6 @@
         font-weight: bold;
         cursor: pointer;
     }
-
     .close-modal:hover,
     .close-modal:focus {
         color: #000;
@@ -48,97 +44,158 @@
         justify-content: space-between;
         margin: 20px;
     }
-
     .left-panel, .right-panel {
         flex: 0 0 48%;
         box-sizing: border-box;
     }
-
     textarea {
         width: 100%;
         resize: none;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
     }
-
     .result-box {
         min-height: 150px;
         border: 1px solid #ccc;
         padding: 10px;
         border-radius: 5px;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
     }
 
-    /* 按钮样式（可自行调整） */
+    /* 按钮 */
     .fancy-button {
         background-color: #4CAF50;
         border: none;
         color: white;
         padding: 10px 16px;
-        text-align: center;
         cursor: pointer;
         border-radius: 4px;
         margin-top: 10px;
+        font-family: "Segoe UI", sans-serif;
     }
-
     .fancy-button:hover {
         background-color: #45a049;
     }
 
-    /* 转圈等待动画 */
+    /* 加载动画 */
     .spinner {
-        display: none; /* 默认不显示 */
-        border: 8px solid #f3f3f3; /* Light grey */
-        border-top: 8px solid #3498db; /* Blue */
+        display: none;
+        border: 8px solid #f3f3f3;
+        border-top: 8px solid #3498db;
         border-radius: 50%;
         width: 60px;
         height: 60px;
         animation: spin 2s linear infinite;
         margin: 20px auto;
     }
-
     @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
+    }
+
+    /* 表格美化：减少行距、对齐表头 */
+    #deid-config table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
+    }
+    #deid-config thead th {
+        background-color: #f2f2f2;
+        text-align: left;
+        padding: 6px;
+        font-weight: 600;
+        border-bottom: 2px solid #ccc;
+    }
+    #deid-config tbody tr {
+        border-bottom: 1px solid #ddd;
+    }
+    #deid-config tbody tr:hover {
+        background-color: #f9f9f9;
+    }
+    #deid-config td {
+        padding: 4px; /* 缩小行间距 */
+        vertical-align: middle;
+    }
+
+    /* 下拉菜单样式 */
+    .strategy-select, .sub-menu-select {
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
+        padding: 3px 6px;
+        margin-right: 4px;
+    }
+    .strategy-select {
+        display: inline-block;
+        width: 110px;
+        vertical-align: middle;
+    }
+    .sub-menu-select {
+        display: inline-block;
+        vertical-align: middle;
+        margin-left: 6px;
+        width: 80px;
+        /* 默认隐藏（JS中切换） */
+        display: none;
     }
 </style>
 
 <div class="content">
     <!-- 左侧输入 -->
     <div class="left-panel">
-        <h2>Input Text for De-identification</h2>
+        <h2 style="font-family: 'Segoe UI', sans-serif;">Input Text for De-identification</h2>
         <textarea id="deid-input" rows="8" placeholder="Enter medical summary here..." oninput="autoResize(this)"></textarea>
         <br>
         <button id="configure-deid-btn" class="fancy-button">
             <i class="fas fa-magic"></i> Configure De-identification
         </button>
     </div>
+
     <!-- 右侧输出 -->
     <div class="right-panel">
-        <h2>De-identified Result</h2>
+        <h2 style="font-family: 'Segoe UI', sans-serif;">De-identified Result</h2>
         <div id="deid-result" class="result-box">
             <p>Result will appear here...</p>
         </div>
     </div>
 </div>
 
-<!-- 弹窗窗口 -->
+<!-- 弹窗 -->
 <div id="deid-config-modal" class="modal">
     <div class="modal-content">
         <span class="close-modal">&times;</span>
-        <h3>De-identification Configuration</h3>
+        <h3 style="font-family: 'Segoe UI', sans-serif; margin-bottom: 0.5rem;">
+            De-identification Configuration
+        </h3>
         <div id="spinner" class="spinner"></div>
         <div id="deid-config" style="display:none;">
-            <p>Select which entity groups to de-identify and choose a strategy:</p>
-            <table style="width:100%;">
+            <p style="margin-top: 0.5rem; font-family: 'Segoe UI';">
+                Select which entity groups to de-identify and choose a strategy:
+            </p>
+            <table>
                 <thead>
                 <tr>
-                    <th>Entity Group</th>
-                    <th>Strategy</th>
+                    <th style="width: 50%;">Entity Group</th>
+                    <th style="width: 50%;">Strategy</th>
                 </tr>
                 </thead>
                 <tbody id="config-table-body">
-                <!-- 动态生成配置选项 -->
+                <!-- 动态生成 -->
                 </tbody>
             </table>
-            <button id="apply-deid-btn" class="fancy-button">Apply De-identification</button>
+
+            <!-- 底部按钮区域 -->
+            <div style="text-align: right; margin-top: 1rem;">
+                <button id="clear-deid-btn" class="fancy-button"
+                        style="background-color: #f44336; margin-right: 10px;">
+                    Clear All
+                </button>
+                <button id="apply-deid-btn" class="fancy-button">
+                    Apply De-identification
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -148,24 +205,22 @@
         let originalText = "";
         let entities = [];
         let entityGroups = [];
-        let userStrategies = {}; // 记忆用户的配置
+        let userStrategies = {};
 
-        // 点击“Configure De-identification”按钮
+        // 点击“Configure De-identification”
         $('#configure-deid-btn').click(function () {
             const text = $('#deid-input').val().trim();
             if (text === "") {
                 alert("Please enter some text for de-identification.");
                 return;
             }
-
-            // 显示弹窗
+            // 打开弹窗
             $('#deid-config-modal').css('display', 'block');
-
-            // 显示spinner，隐藏配置内容
+            // 显示spinner
             $('#spinner').show();
             $('#deid-config').hide();
 
-            // 发送文本到后端进行NER处理
+            // 向后端请求 NER 结果
             $.ajax({
                 url: '/process_deid',
                 type: 'POST',
@@ -175,45 +230,47 @@
                     entities = response.entities;
                     entityGroups = response.entity_groups;
 
-                    // 如果有实体，显示配置选项
                     if (entityGroups.length > 0) {
                         renderEntityConfig(entityGroups);
                     } else {
                         $('#spinner').hide();
-                        $('#deid-config').html("<p>No entities found. Please try another text or check your NER model.</p>").show();
+                        $('#deid-config')
+                            .html("<p>No entities found. Please try another text or check your NER model.</p>")
+                            .show();
                     }
                 },
                 error: function () {
                     $('#spinner').hide();
-                    $('#deid-config').html("<p>An error occurred while processing the text. Please try again.</p>").show();
+                    $('#deid-config')
+                        .html("<p>An error occurred while processing the text. Please try again.</p>")
+                        .show();
                 }
             });
         });
 
-        // 显示弹窗
-        function openModal() {
-            $('#deid-config-modal').css('display', 'block');
-        }
-
-        // 关闭弹窗
+        // 关闭弹窗事件
         $('.close-modal').click(function() {
             $('#deid-config-modal').css('display', 'none');
         });
-
-        // 点击窗口背景也可关闭弹窗
         $(window).click(function(event) {
-            let modal = document.getElementById('deid-config-modal');
-            if (event.target == modal) {
+            if (event.target === document.getElementById('deid-config-modal')) {
                 $('#deid-config-modal').css('display', 'none');
             }
         });
 
-        // 动态渲染实体组配置
+        // 动态生成配置表
         function renderEntityConfig(groups) {
             let html = "";
             groups.forEach(function(g) {
-                // 检查是否有之前的策略选择
                 let selectedStrategy = userStrategies[g] || "none";
+
+                // 仅当 g === "AGE" 或 "DATE" 时提供 "Generalize"
+                let generalizeOption = "";
+                if (g === "AGE" || g === "DATE") {
+                    generalizeOption = `<option value="generalize"
+                        ${selectedStrategy === "generalize" ? "selected" : ""}>Generalize</option>`;
+                }
+
                 html += `
                 <tr>
                     <td>${g}</td>
@@ -221,32 +278,71 @@
                         <select class="strategy-select" data-group="${g}">
                             <option value="none" ${selectedStrategy === "none" ? "selected" : ""}>None</option>
                             <option value="delete" ${selectedStrategy === "delete" ? "selected" : ""}>Delete</option>
-                            <option value="generalize" ${selectedStrategy === "generalize" ? "selected" : ""}>Generalize</option>
+                            ${generalizeOption}
                             <option value="pseudonymize" ${selectedStrategy === "pseudonymize" ? "selected" : ""}>Pseudonymize</option>
+                        </select>
+                        <select class="sub-menu-select" data-group="${g}">
+                            <option value="mild">mild</option>
+                            <option value="moderate">moderate</option>
+                            <option value="severe">severe</option>
                         </select>
                     </td>
                 </tr>
-            `;
+                `;
             });
 
             $('#config-table-body').html(html);
 
-            // 隐藏spinner，显示配置内容
+            // 当主下拉改变时：若选 "generalize" => 显示二级下拉
+            $('.strategy-select').on('change', function() {
+                const group = $(this).data('group');
+                const selected = $(this).val();
+                const $subMenu = $(this).closest('td').find('.sub-menu-select');
+
+                if (selected === "generalize") {
+                    $subMenu.show();
+                } else {
+                    $subMenu.hide();
+                }
+            });
+
+            // 如果 userStrategies[g] 已经是 "generalize_mild" 之类 => 回显
+            groups.forEach(function(g) {
+                if (userStrategies[g] && userStrategies[g].startsWith("generalize_")) {
+                    let level = userStrategies[g].split("_")[1];
+                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
+                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
+                    // 设置主下拉为 "generalize"
+                    $rowSelect.val("generalize");
+                    // 显示二级下拉
+                    $subSelect.show();
+                    // 选中 mild / moderate / severe
+                    $subSelect.val(level);
+                }
+            });
+
             $('#spinner').hide();
             $('#deid-config').show();
         }
 
-        // 点击“Apply De-identification”按钮
+        // 点击“Apply De-identification”
         $('#apply-deid-btn').click(function () {
             let strategies = {};
             $('.strategy-select').each(function () {
                 const group = $(this).data('group');
-                const strategy = $(this).val();
+                let strategy = $(this).val();
+
+                // 若选 "generalize" => 拼接 "generalize_mild" ...
+                if (strategy === "generalize") {
+                    const level = $(this).closest('td').find('.sub-menu-select').val();
+                    strategy = "generalize_" + level;
+                }
+
                 if (strategy !== "none") {
                     strategies[group] = strategy;
-                    userStrategies[group] = strategy; // 记忆用户选择
+                    userStrategies[group] = strategy;
                 } else {
-                    delete userStrategies[group]; // 移除未选择的策略
+                    delete userStrategies[group];
                 }
             });
 
@@ -255,7 +351,7 @@
                 return;
             }
 
-            // 发送策略和实体信息到后端应用去标识化
+            // 向后端发送
             $.ajax({
                 url: '/apply_deid',
                 type: 'POST',
@@ -275,12 +371,19 @@
                 }
             });
         });
+
+        // Clear All
+        $('#clear-deid-btn').click(function() {
+            $('.strategy-select').val('none');
+            $('.sub-menu-select').hide();
+            userStrategies = {};
+        });
     });
 
-    // 自动调整输入框高度
+    // 自适应文本框
     function autoResize(textarea) {
-        textarea.style.height = 'auto';  // 先重置高度
-        textarea.style.height = (textarea.scrollHeight) + 'px';  // 根据内容设置新的高度
+        textarea.style.height = 'auto';
+        textarea.style.height = (textarea.scrollHeight) + 'px';
     }
 </script>
 {% endblock %}
