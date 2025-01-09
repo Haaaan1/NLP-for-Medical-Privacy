@@ -81,6 +81,7 @@ def process():
     """
     Handle NER highlighting for the input text,
     filter entities based on confidence threshold, and return the result.
+    Also calculate the overall confidence score for displayed entities.
     """
     text = request.form['text']
     threshold = float(request.form.get('threshold', 0))  # Default threshold is 0
@@ -88,6 +89,18 @@ def process():
 
     segments = []
     current_pos = 0
+    confidence_scores = []
+
+    def assign_color(label):
+        """
+        Assign color for each label.
+        """
+        if label not in LABEL_COLORS:
+            if len(LABEL_COLORS) < len(COLOR_PALETTE):
+                LABEL_COLORS[label] = COLOR_PALETTE[len(LABEL_COLORS) % len(COLOR_PALETTE)]
+            else:
+                LABEL_COLORS[label] = f'#{random.randint(0, 0xFFFFFF):06x}'
+        return LABEL_COLORS[label]
 
     def get_confidence_color(confidence):
         if confidence >= 0.8:
@@ -102,13 +115,14 @@ def process():
     for entity in ner_results:
         start, end = entity['start'], entity['end']
         label = entity['entity_group']
-        confidence = entity['score']
+        confidence = float(entity['score'])  # Ensure confidence is a Python float
         label_color = assign_color(label)
         confidence_color = get_confidence_color(confidence)
 
         if current_pos < start:
             segments.append({'text': text[current_pos:start], 'label': None})
 
+        # Only annotate entities with confidence >= threshold
         if confidence >= threshold:
             segments.append({
                 'text': text[start:end],
@@ -117,6 +131,7 @@ def process():
                 'score': confidence,
                 'confidence_color': confidence_color
             })
+            confidence_scores.append(confidence)  # Include in confidence score calculation
         else:
             segments.append({'text': text[start:end], 'label': None})
 
@@ -125,6 +140,12 @@ def process():
     if current_pos < len(text):
         segments.append({'text': text[current_pos:], 'label': None})
 
+    # Calculate overall confidence score
+    overall_confidence = (
+        float(sum(confidence_scores)) / len(confidence_scores) if confidence_scores else 0.0
+    )
+
+    # Convert segments into HTML
     result_str = ""
     for segment in segments:
         if segment['label']:
@@ -145,7 +166,7 @@ def process():
         else:
             result_str += segment['text']
 
-    return jsonify({'result': result_str})
+    return jsonify({'result': result_str, 'overall_confidence': overall_confidence})
 
 
 @app.route('/process_deid', methods=['POST'])

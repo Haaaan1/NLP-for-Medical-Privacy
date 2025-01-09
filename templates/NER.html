@@ -13,6 +13,9 @@
             <h2>NER Results</h2>
             <button id="filter-btn" class="fancy-button">Filter</button>
         </div>
+        <div id="overall-confidence" style="margin: 10px 0; font-size: 1.2em; font-weight: bold;">
+            Overall Confidence Score: <span id="confidence-score">-</span>
+        </div>
         <div id="filter-slider" style="display: none; margin: 10px 0;">
             <label for="threshold-slider">Threshold:</label>
             <input type="range" id="threshold-slider" min="0" max="1" step="0.01" value="0" />
@@ -36,6 +39,7 @@
                 data: { text: text, threshold: 0 }, // Default threshold is 0
                 success: function (response) {
                     $('#ner-result').html(response.result);
+                    $('#confidence-score').text(response.overall_confidence.toFixed(2)); // Update confidence score
                 }
             });
         });
@@ -60,6 +64,7 @@
                 data: { text: text, threshold: threshold },
                 success: function (response) {
                     $('#ner-result').html(response.result);
+                    $('#confidence-score').text(response.overall_confidence.toFixed(2)); // Update confidence score
                 }
             });
         });
