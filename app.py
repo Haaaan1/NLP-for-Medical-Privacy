@@ -14,6 +14,32 @@ nlp_pipeline = pipeline(
     aggregation_strategy='simple'
 )
 
+# Predefined label colors for known entities
+LABEL_COLORS = {
+    "AGE": "#e0c3fc",
+    "HISTORY": "#bde0fe",
+    "SEX": "#ffccf9",
+    "CLINICAL_EVENT": "#ffd6a5",
+    "DURATION": "#caffbf",
+    "BIOLOGICAL_STRUCTURE": "#9bf6ff",
+    "SIGN_SYMPTOM": "#ffc6ff",
+    "DISEASE_DISORDER": "#fdffb6",
+    "DATE": "#c3aed6",
+    "LAB_VALUE": "#a0c4ff",
+    "DIAGNOSTIC_PROCEDURE": "#bdb2ff",
+    "DETAILED_DESCRIPTION": "#ffafcc",
+    "THERAPEUTIC_PROCEDURE": "#ff9e9d",
+    "DOSAGE": "#c3ffd8",
+    "ADMINISTRATION": "#a9d6e5",
+    "MEDICATION": "#dab6fc"
+}
+
+# Fallback color palette for dynamically assigned colors
+COLOR_PALETTE = [
+    "#e0c3fc", "#bde0fe", "#ffccf9", "#ffd6a5", "#caffbf", "#9bf6ff",
+    "#ffc6ff", "#fdffb6", "#c3aed6", "#a0c4ff", "#bdb2ff", "#ffafcc"
+]
+
 
 @app.route('/')
 @app.route('/ner')
@@ -40,42 +66,30 @@ def about():
     return render_template('About.html', title="About - Medical Data Anonymization")
 
 
+# Assign color for new labels if they are not in LABEL_COLORS
+def assign_color(label):
+    if label not in LABEL_COLORS:
+        if len(LABEL_COLORS) < len(COLOR_PALETTE):
+            LABEL_COLORS[label] = COLOR_PALETTE[len(LABEL_COLORS) % len(COLOR_PALETTE)]
+        else:
+            LABEL_COLORS[label] = f'#{random.randint(0, 0xFFFFFF):06x}'
+    return LABEL_COLORS[label]
+
+
 @app.route('/process', methods=['POST'])
 def process():
     """
     Handle NER highlighting for the input text,
-    return the result with colored HTML spans and hover for confidence score.
+    filter entities based on confidence threshold, and return the result.
     """
     text = request.form['text']
-    ner_results = nlp_pipeline(text)
+    threshold = float(request.form.get('threshold', 0))  # Default threshold is 0
+    ner_results = nlp_pipeline(text)  # Assume nlp_pipeline returns results
 
-    # Prepare segments for highlighting
     segments = []
     current_pos = 0
 
-    # Color palette and label-colors mapping
-    label_colors = {}
-    COLOR_PALETTE = [
-        "#e0c3fc", "#bde0fe", "#ffccf9", "#ffd6a5", "#caffbf", "#9bf6ff",
-        "#ffc6ff", "#fdffb6", "#c3aed6", "#a0c4ff", "#bdb2ff", "#ffafcc"
-    ]
-
-    def assign_color(label):
-        """
-        Assign color for each entity group (label).
-        If out of palette, create random color.
-        """
-        if label not in label_colors:
-            if len(label_colors) < len(COLOR_PALETTE):
-                label_colors[label] = COLOR_PALETTE[len(label_colors)]
-            else:
-                label_colors[label] = f'#{random.randint(0, 0xFFFFFF):06x}'
-        return label_colors[label]
-
     def get_confidence_color(confidence):
-        """
-        Determine the color for the hover tooltip based on confidence score.
-        """
         if confidence >= 0.8:
             return "green"
         elif 0.6 <= confidence < 0.8:
@@ -83,10 +97,8 @@ def process():
         else:
             return "red"
 
-    # Sort by 'start' to ensure sequential processing
     ner_results = sorted(ner_results, key=lambda x: x['start'])
 
-    # Build segments
     for entity in ner_results:
         start, end = entity['start'], entity['end']
         label = entity['entity_group']
@@ -97,21 +109,22 @@ def process():
         if current_pos < start:
             segments.append({'text': text[current_pos:start], 'label': None})
 
-        segments.append({
-            'text': text[start:end],
-            'label': label,
-            'color': label_color,
-            'score': confidence,
-            'confidence_color': confidence_color
-        })
+        if confidence >= threshold:
+            segments.append({
+                'text': text[start:end],
+                'label': label,
+                'color': label_color,
+                'score': confidence,
+                'confidence_color': confidence_color
+            })
+        else:
+            segments.append({'text': text[start:end], 'label': None})
 
         current_pos = end
 
-    # Append any leftover text after the last entity
     if current_pos < len(text):
         segments.append({'text': text[current_pos:], 'label': None})
 
-    # Convert segments into HTML
     result_str = ""
     for segment in segments:
         if segment['label']:

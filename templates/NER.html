@@ -9,7 +9,16 @@
         <button id="compute-btn" class="fancy-button"><i class="fas fa-magic"></i> Compute</button>
     </div>
     <div class="right-panel">
-        <h2>NER Result</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>NER Results</h2>
+            <button id="filter-btn" class="fancy-button">Filter</button>
+        </div>
+        <div id="filter-slider" style="display: none; margin: 10px 0;">
+            <label for="threshold-slider">Threshold:</label>
+            <input type="range" id="threshold-slider" min="0" max="1" step="0.01" value="0" />
+            <span id="slider-value">0.00</span>
+            <button id="apply-filter-btn">Apply</button>
+        </div>
         <div id="ner-result" class="result-box">
             <p>Output will appear here...</p>
         </div>
@@ -24,7 +33,31 @@
             $.ajax({
                 url: '/process',
                 type: 'POST',
-                data: { text: text },
+                data: { text: text, threshold: 0 }, // Default threshold is 0
+                success: function (response) {
+                    $('#ner-result').html(response.result);
+                }
+            });
+        });
+
+        // Toggle filter slider visibility
+        $('#filter-btn').click(function () {
+            $('#filter-slider').toggle();
+        });
+
+        // Update slider value display
+        $('#threshold-slider').on('input', function () {
+            $('#slider-value').text($(this).val());
+        });
+
+        // Apply filter and reload results with threshold
+        $('#apply-filter-btn').click(function () {
+            const text = $('#medical-summary').val();
+            const threshold = $('#threshold-slider').val();
+            $.ajax({
+                url: '/process',
+                type: 'POST',
+                data: { text: text, threshold: threshold },
                 success: function (response) {
                     $('#ner-result').html(response.result);
                 }
