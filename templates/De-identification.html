@@ -26,7 +26,9 @@
     }
     .close-modal {
         color: #aaa;
-        float: right;
+        position: absolute;
+        top: 10px;
+        right: 10px;
         font-size: 28px;
         font-weight: bold;
         cursor: pointer;
@@ -37,7 +39,25 @@
         text-decoration: none;
     }
 
-    /* 布局 */
+    /* 推荐按钮 */
+    .recommend-btn {
+        position: absolute;
+        top: 20px;
+        right: 50px; /* 距离右边10px，close按钮右侧有40px空间 */
+        background-color: #008CBA; /* 蓝色 */
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        cursor: pointer;
+        border-radius: 4px;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
+    }
+    .recommend-btn:hover {
+        background-color: #007B9E;
+    }
+
+    /* 主体布局 */
     .content {
         display: flex;
         flex-wrap: wrap;
@@ -140,6 +160,19 @@
         /* 默认隐藏（JS中切换） */
         display: none;
     }
+
+    /* 底部按钮布局 */
+    .button-container {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 1rem;
+    }
+    .button-container .left-buttons {
+        /* 保持“Clear All”在左边 */
+    }
+    .button-container .right-buttons {
+        /* 将“Apply”按钮放在右边 */
+    }
 </style>
 
 <div class="content">
@@ -166,6 +199,7 @@
 <div id="deid-config-modal" class="modal">
     <div class="modal-content">
         <span class="close-modal">&times;</span>
+        <button id="recommend-btn" class="recommend-btn">Recommend Strategies</button>
         <h3 style="font-family: 'Segoe UI', sans-serif; margin-bottom: 0.5rem;">
             De-identification Configuration
         </h3>
@@ -187,14 +221,18 @@
             </table>
 
             <!-- 底部按钮区域 -->
-            <div style="text-align: right; margin-top: 1rem;">
-                <button id="clear-deid-btn" class="fancy-button"
-                        style="background-color: #f44336; margin-right: 10px;">
-                    Clear All
-                </button>
-                <button id="apply-deid-btn" class="fancy-button">
-                    Apply De-identification
-                </button>
+            <div class="button-container">
+                <div class="left-buttons">
+                    <button id="clear-deid-btn" class="fancy-button"
+                            style="background-color: #f44336;">
+                        Clear All
+                    </button>
+                </div>
+                <div class="right-buttons">
+                    <button id="apply-deid-btn" class="fancy-button">
+                        Apply De-identification
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -268,7 +306,7 @@
                 let generalizeOption = "";
                 if (g === "AGE" || g === "DATE") {
                     generalizeOption = `<option value="generalize"
-                        ${selectedStrategy === "generalize" ? "selected" : ""}>Generalize</option>`;
+                        ${selectedStrategy.startsWith("generalize") ? "selected" : ""}>Generalize</option>`;
                 }
 
                 html += `
@@ -318,6 +356,19 @@
                     $subSelect.show();
                     // 选中 mild / moderate / severe
                     $subSelect.val(level);
+                } else if (userStrategies[g] && userStrategies[g] === "pseudonymize") {
+                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
+                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
+                    // 设置主下拉为 "pseudonymize"
+                    $rowSelect.val("pseudonymize");
+                    // 隐藏二级下拉
+                    $subSelect.hide();
+                } else {
+                    // 默认隐藏二级下拉
+                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
+                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
+                    $rowSelect.val("none");
+                    $subSelect.hide();
                 }
             });
 
@@ -331,8 +382,6 @@
             $('.strategy-select').each(function () {
                 const group = $(this).data('group');
                 let strategy = $(this).val();
-
-                // 若选 "generalize" => 拼接 "generalize_mild" ...
                 if (strategy === "generalize") {
                     const level = $(this).closest('td').find('.sub-menu-select').val();
                     strategy = "generalize_" + level;
@@ -374,9 +423,41 @@
 
         // Clear All
         $('#clear-deid-btn').click(function() {
-            $('.strategy-select').val('none');
-            $('.sub-menu-select').hide();
-            userStrategies = {};
+            $('.strategy-select').each(function() {
+                const group = $(this).data('group');
+                $(this).val('none');
+                $(this).closest('td').find('.sub-menu-select').hide();
+                delete userStrategies[group];
+            });
+        });
+
+        // 点击“推荐 Strategies”按钮
+        $('#recommend-btn').click(function() {
+            $('.strategy-select').each(function() {
+                const group = $(this).data('group');
+                let recommendedStrategy = 'none';
+
+                if (group === "AGE" || group === "DATE") {
+                    recommendedStrategy = "generalize";
+                } else if (group === "DURATION") {
+                    recommendedStrategy = "pseudonymize";
+                }
+
+                $(this).val(recommendedStrategy);
+                const $subMenu = $(this).closest('td').find('.sub-menu-select');
+
+                if (recommendedStrategy === "generalize") {
+                    $subMenu.show();
+                    $subMenu.val("mild"); // 设置为 mild
+                    userStrategies[group] = "generalize_mild";
+                } else if (recommendedStrategy === "pseudonymize") {
+                    $subMenu.hide();
+                    userStrategies[group] = "pseudonymize";
+                } else {
+                    $subMenu.hide();
+                    delete userStrategies[group];
+                }
+            });
         });
     });
 

@@ -44,7 +44,7 @@ def about():
 def process():
     """
     Handle NER highlighting for the input text,
-    return the result with colored HTML spans.
+    return the result with colored HTML spans and hover for confidence score.
     """
     text = request.form['text']
     ner_results = nlp_pipeline(text)
@@ -72,6 +72,17 @@ def process():
                 label_colors[label] = f'#{random.randint(0, 0xFFFFFF):06x}'
         return label_colors[label]
 
+    def get_confidence_color(confidence):
+        """
+        Determine the color for the hover tooltip based on confidence score.
+        """
+        if confidence >= 0.8:
+            return "green"
+        elif 0.6 <= confidence < 0.8:
+            return "yellow"
+        else:
+            return "red"
+
     # Sort by 'start' to ensure sequential processing
     ner_results = sorted(ner_results, key=lambda x: x['start'])
 
@@ -79,7 +90,9 @@ def process():
     for entity in ner_results:
         start, end = entity['start'], entity['end']
         label = entity['entity_group']
+        confidence = entity['score']
         label_color = assign_color(label)
+        confidence_color = get_confidence_color(confidence)
 
         if current_pos < start:
             segments.append({'text': text[current_pos:start], 'label': None})
@@ -87,7 +100,9 @@ def process():
         segments.append({
             'text': text[start:end],
             'label': label,
-            'color': label_color
+            'color': label_color,
+            'score': confidence,
+            'confidence_color': confidence_color
         })
 
         current_pos = end
@@ -103,7 +118,9 @@ def process():
             result_str += (
                 f'<span style="background-color:{segment["color"]}; '
                 f'padding: 5px 10px; margin: 2px; border-radius: 25px; '
-                f'box-shadow: 0px 1px 5px rgba(0, 0, 0, 0.2); font-weight: bold;">'
+                f'box-shadow: 0px 1px 5px rgba(0, 0, 0, 0.2); font-weight: bold;" '
+                f'title="Confidence: {segment["score"]:.2f}" '
+                f'data-confidence-color="{segment["confidence_color"]}">'
             )
             result_str += (
                 f'{segment["text"]} '

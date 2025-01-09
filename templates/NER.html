@@ -1,41 +1,64 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <div class="content">
-        <div class="left-panel">
-            <h2>Input Medical Summary</h2>
-            <textarea id="medical-summary" rows="8" placeholder="Enter medical summary here..." oninput="autoResize(this)"></textarea>
-            <br>
-            <button id="compute-btn" class="fancy-button"><i class="fas fa-magic"></i> Compute</button>
-        </div>
-        <div class="right-panel">
-            <h2>NER Result</h2>
-            <div id="ner-result" class="result-box">
-                <p>Output will appear here...</p>
-            </div>
+<div class="content">
+    <div class="left-panel">
+        <h2>Input Medical Summary</h2>
+        <textarea id="medical-summary" rows="8" placeholder="Enter medical summary here..." oninput="autoResize(this)"></textarea>
+        <br>
+        <button id="compute-btn" class="fancy-button"><i class="fas fa-magic"></i> Compute</button>
+    </div>
+    <div class="right-panel">
+        <h2>NER Result</h2>
+        <div id="ner-result" class="result-box">
+            <p>Output will appear here...</p>
         </div>
     </div>
+</div>
 
-    <script>
-        $(document).ready(function () {
-            // NER功能处理
-            $('#compute-btn').click(function () {
-                const text = $('#medical-summary').val();
-                $.ajax({
-                    url: '/process',
-                    type: 'POST',
-                    data: { text: text },
-                    success: function (response) {
-                        $('#ner-result').html(response.result);
-                    }
-                });
+<script>
+    $(document).ready(function () {
+        // Process NER functionality on button click
+        $('#compute-btn').click(function () {
+            const text = $('#medical-summary').val();
+            $.ajax({
+                url: '/process',
+                type: 'POST',
+                data: { text: text },
+                success: function (response) {
+                    $('#ner-result').html(response.result);
+                }
             });
         });
+    });
 
-        // 自动调整输入框高度
-        function autoResize(textarea) {
-            textarea.style.height = 'auto';  // 先重置高度
-            textarea.style.height = (textarea.scrollHeight) + 'px';  // 根据内容设置新的高度
-        }
-    </script>
+    // Automatically resize textarea based on content
+    function autoResize(textarea) {
+        textarea.style.height = 'auto'; // Reset height
+        textarea.style.height = (textarea.scrollHeight) + 'px'; // Adjust to fit content
+    }
+</script>
+
+<style>
+    /* Add optional styling for the tooltip effect if not using the default title attribute */
+    span[title] {
+        position: relative;
+    }
+
+    span[title]:hover::after {
+        content: attr(title);
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #333;
+        color: #fff;
+        padding: 5px 10px;
+        border-radius: 5px;
+        white-space: nowrap;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        font-size: 0.9em;
+        z-index: 10;
+    }
+</style>
 {% endblock %}
