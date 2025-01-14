@@ -284,12 +284,13 @@ def generalize_date(date_str, level="mild"):
         # Try parsing the date using dateutil
         parsed_date = parser.parse(date_str, fuzzy=True)
         year = parsed_date.year
-        # If parsed date has a valid month, use it, else None
-        month = parsed_date.month if parsed_date.month else None
+
+        # Check if the original string contains month information
+        has_month = any(part.isdigit() and 1 <= int(part) <= 12 for part in date_str.split('-'))
 
         if level == "mild":
             # Generalize to "year-month" if month exists; otherwise, "year-XX"
-            return f"{year}-{month:02d}" if month else f"{year}-XX"
+            return f"{year}-{parsed_date.month:02d}" if has_month else f"{year}-XX"
         elif level == "moderate":
             # Generalize to year only
             return f"{year}"
