@@ -304,7 +304,7 @@ def generalize_date(date_str, level="mild"):
     except ValueError:
         # Fallback if the date string cannot be parsed
         return "[DATE]"
-    
+
 
 @app.route('/apply_deid', methods=['POST'])
 def apply_deid():
@@ -312,6 +312,7 @@ def apply_deid():
     original_text = data['original_text']
     strategies = data['strategies']
     entities = data['entities']
+    threshold = float(data.get('threshold', 0))  # 默认阈值为0
 
     replaced_text = original_text
 
@@ -319,47 +320,19 @@ def apply_deid():
     pseudonym_counters = {}
 
     def do_replacement(orig, start, end, replacement):
-        """
-        Replaces the substring [start:end] with 'replacement'.
-        We'll do minimal spacing checks around the replaced region,
-        but first clamp start/end to avoid IndexError.
-        """
-        # Clamp indexes to be within [0, len(orig)]
-        if start < 0:
-            start = 0
-        if end < 0:
-            end = 0
-        if start > len(orig):
-            start = len(orig)
-        if end > len(orig):
-            end = len(orig)
-        if start >= end:
-            # no valid range to replace
+        if start < 0 or end < 0 or start >= end:
             return orig
-
         left_part = orig[:start]
         right_part = orig[end:]
-
-        # Check character before 'start' if exists
-        if start > 0:
-            # Only if it's not whitespace/punctuation, prepend a space
-            prev_char = orig[start-1]
-            if not re.match(r'[\s,.!?;:]', prev_char):
-                replacement = " " + replacement
-
-        # Check character at 'end' if it's within range
-        if end < len(orig):
-            # If the next char is not whitespace/punctuation, add a trailing space
-            next_char = orig[end]
-            if not re.match(r'[\s,.!?;:]', next_char):
-                replacement = replacement + " "
-
         return left_part + replacement + right_part
 
-    # Sort entities reverse by start index
+    # Sort entities in reverse order
     for ent in sorted(entities, key=lambda x: x['start'], reverse=True):
         eg = ent['entity_group']
-        if eg not in strategies:
+        confidence = float(ent.get('confidence', 0))  # 从实体中获取置信度
+
+        if eg not in strategies or confidence < threshold:
+            # 跳过不符合置信度阈值的实体
             continue
 
         strategy = strategies[eg]
@@ -368,65 +341,24 @@ def apply_deid():
 
         if strategy == "delete":
             replaced_text = do_replacement(replaced_text, start, end, "[REDACTED]")
-            continue
-
         elif strategy == "pseudonymize":
             if eg not in pseudonym_counters:
                 pseudonym_counters[eg] = 0
             pseudonym_counters[eg] += 1
-
-            letter_index = pseudonym_counters[eg] - 1
-            if letter_index < 26:
-                letter = chr(65 + letter_index)  # 'A' etc.
-            else:
-                letter = f"X{letter_index}"
-
-            new_label = f"{eg}_{letter}"
-            replaced_text = do_replacement(replaced_text, start, end, new_label)
-            continue
-
+            letter = chr(65 + (pseudonym_counters[eg] - 1) % 26)  # 循环生成 'A', 'B', ...
+            replaced_text = do_replacement(replaced_text, start, end, f"{eg}_{letter}")
         elif strategy.startswith("generalize"):
-            # e.g. "generalize_mild" / "generalize_moderate" / "generalize_severe"
-            if eg in ["AGE"]:
-                level = "mild"
-                if strategy == "generalize_moderate":
-                    level = "moderate"
-                elif strategy == "generalize_severe":
-                    level = "severe"
-                new_str = generalize_age(text_slice, level)
-                replaced_text = do_replacement(replaced_text, start, end, new_str)
-
+            level = strategy.split("_")[1]
+            if eg == "AGE":
+                generalized = generalize_age(text_slice, level)
             elif eg == "DATE":
-                level = "mild"
-                if strategy == "generalize_moderate":
-                    level = "moderate"
-                elif strategy == "generalize_severe":
-                    level = "severe"
-                new_str = generalize_date(text_slice, level)
-                replaced_text = do_replacement(replaced_text, start, end, new_str)
-
+                generalized = generalize_date(text_slice, level)
             else:
-                # fallback
-                length = end - start
-                x_str = "X" * length
-                replaced_text = do_replacement(replaced_text, start, end, x_str)
-
-            continue
-
-        elif strategy == "generalize":
-            length = end - start
-            x_str = "X" * length
-            replaced_text = do_replacement(replaced_text, start, end, x_str)
-            continue
-
-        # else: unrecognized strategy => skip
-
-    # Post-processing to fix punctuation spacing, multiple spaces
-    replaced_text = re.sub(r'\s+([,.:;!?])', r'\1', replaced_text)
-    replaced_text = re.sub(r'([,.:;!?])([A-Za-z0-9])', r'\1 \2', replaced_text)
-    replaced_text = re.sub(r'\s+', ' ', replaced_text).strip()
+                generalized = "[GENERALIZED]"
+            replaced_text = do_replacement(replaced_text, start, end, generalized)
 
     return jsonify({'deidentified_text': replaced_text})
+
 
 if __name__ == '__main__':
     app.run(debug=True)

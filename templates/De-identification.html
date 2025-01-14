@@ -83,6 +83,25 @@
         font-size: 14px;
     }
 
+    #filter-slider {
+        margin: 15px 0;
+        text-align: left;
+    }
+    #filter-slider label {
+        font-family: "Segoe UI", sans-serif;
+        font-size: 16px;
+        margin-right: 10px;
+    }
+    #threshold-slider {
+        width: 80%;
+    }
+    #slider-value {
+        font-family: "Segoe UI", sans-serif;
+        font-size: 16px;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
     /* 按钮 */
     .fancy-button {
         background-color: #4CAF50;
@@ -203,6 +222,11 @@
         <h3 style="font-family: 'Segoe UI', sans-serif; margin-bottom: 0.5rem;">
             De-identification Configuration
         </h3>
+        <div id="filter-slider">
+            <p style="margin-top: 0.5rem; font-family: 'Segoe UI';">Confidence Score Threshold:</p>
+            <input type="range" id="threshold-slider" min="0" max="1" step="0.01" value="0.8" />
+            <span id="slider-value">0.80</span>
+        </div>
         <div id="spinner" class="spinner"></div>
         <div id="deid-config" style="display:none;">
             <p style="margin-top: 0.5rem; font-family: 'Segoe UI';">
@@ -244,6 +268,13 @@
         let entities = [];
         let entityGroups = [];
         let userStrategies = {};
+        let threshold = 0.8;
+
+        // 滑块事件：更新显示值
+        $('#threshold-slider').on('input', function () {
+            threshold = parseFloat($(this).val());
+            $('#slider-value').text(threshold.toFixed(2));
+        });
 
         // 点击“Configure De-identification”
         $('#configure-deid-btn').click(function () {
@@ -262,7 +293,7 @@
             $.ajax({
                 url: '/process_deid',
                 type: 'POST',
-                data: { text: text },
+                data: { text: text, threshold: threshold},
                 success: function (response) {
                     originalText = response.original_text;
                     entities = response.entities;
@@ -408,7 +439,8 @@
                 data: JSON.stringify({
                     original_text: originalText,
                     strategies: strategies,
-                    entities: entities
+                    entities: entities,
+                    threshold: threshold
                 }),
                 success: function(response) {
                     $('#deid-result').html("<p>" + response.deidentified_text + "</p>");
