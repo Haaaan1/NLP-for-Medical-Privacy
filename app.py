@@ -204,6 +204,7 @@ def process_deid():
 # Helper functions for age/date generalization
 ##############################
 
+
 def generalize_age(age_str, level="mild"):
     """
     Generalize age numbers within a string using the specified level.
@@ -237,30 +238,26 @@ def generalize_age(age_str, level="mild"):
         except ValueError:
             return "[AGE]"
 
-        # Determine fluctuation range based on the level
+        # Determine the interval based on the level
         if level == "mild":
-            fluctuation = random.randint(-1, 1)  # ±1 year
+            interval = 5
         elif level == "moderate":
-            fluctuation = random.randint(-2, 2)  # ±2 years
+            interval = 10
         elif level == "severe":
-            fluctuation = random.randint(-5, 5)  # ±5 years
+            interval = 20
         else:
-            fluctuation = random.randint(-1, 1)  # Default to mild
+            interval = 5  # Default to mild
 
-        new_age = original_age + fluctuation
-        new_age = max(new_age, 0)  # Ensure age is not negative
+        # Calculate the lower and upper bounds
+        lower_bound = (original_age // interval) * interval
+        upper_bound = lower_bound + interval
 
-        # Rebuild the matched string, preserving the surrounding parts
-        if match.group(1):
-            # Case 1: Number followed by age-related words (e.g., "17-year-old")
-            suffix = match.group(0)[len(match.group(1)):]
-            return f"{new_age}{suffix}"
-        elif match.group(2):
-            # Case 2: "age" prefix followed by number (e.g., "age 17" or "age: 17")
-            prefix = match.group(0)[:match.group(0).lower().find(match.group(2).lower())]
-            return f"{prefix}{new_age}"
-        else:
-            return "[AGE]"
+        # Ensure bounds are not negative
+        lower_bound = max(lower_bound, 0)
+        upper_bound = max(upper_bound, 0)
+
+        # Return the age range as a string
+        return f"{lower_bound}-{upper_bound}"
 
     # Use re.sub to perform the replacement
     generalized_str = pattern.sub(replace_age, age_str)
@@ -324,7 +321,8 @@ def apply_deid():
             return orig
         left_part = orig[:start]
         right_part = orig[end:]
-        return left_part + replacement + right_part
+        # 在替换内容前添加一个空格
+        return left_part + " " + replacement + right_part
 
     # Sort entities in reverse order
     for ent in sorted(entities, key=lambda x: x['start'], reverse=True):
@@ -356,6 +354,9 @@ def apply_deid():
             else:
                 generalized = "[GENERALIZED]"
             replaced_text = do_replacement(replaced_text, start, end, generalized)
+
+    # 清理多余的空格（例如连续的空格）
+    replaced_text = " ".join(replaced_text.split())
 
     return jsonify({'deidentified_text': replaced_text})
 
