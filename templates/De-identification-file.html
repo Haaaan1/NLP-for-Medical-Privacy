@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* 弹窗基础样式 */
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.4);
+    }
+    .modal-content {
+        background-color: #fefefe;
+        margin: 5% auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 50%;
+        border-radius: 8px;
+        position: relative;
+        box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+    .close-modal {
+        color: #aaa;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .close-modal:hover,
+    .close-modal:focus {
+        color: #000;
+        text-decoration: none;
+    }
+
+    /* 主体布局 */
+    .content {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        margin: 20px;
+    }
+    .left-panel, .right-panel {
+        flex: 0 0 48%;
+        box-sizing: border-box;
+    }
+
+    /* 表格样式 */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
+    }
+    th, td {
+        padding: 8px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    th {
+        background-color: #f2f2f2;
+        font-weight: 600;
+    }
+    tr:hover {
+        background-color: #f9f9f9;
+    }
+
+    /* 按钮样式 */
+    .fancy-button {
+        background-color: #4CAF50;
+        border: none;
+        color: white;
+        padding: 10px 16px;
+        cursor: pointer;
+        border-radius: 4px;
+        margin-top: 10px;
+        font-family: "Segoe UI", sans-serif;
+    }
+    .fancy-button:hover {
+        background-color: #45a049;
+    }
+
+    /* 加载动画 */
+    .spinner {
+        display: none;
+        border: 8px solid #f3f3f3;
+        border-top: 8px solid #3498db;
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        animation: spin 2s linear infinite;
+        margin: 20px auto;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
+<div class="content">
+    <!-- 左侧面板：文件上传、标签选择和策略设置 -->
+    <div class="left-panel">
+        <h2>Upload and Configure</h2>
+        <div>
+            <button id="upload-file-btn" class="fancy-button">
+                <i class="fas fa-upload"></i> Upload CSV File
+            </button>
+        </div>
+        <div id="column-selection" style="display:none;">
+            <h3>Select Columns to De-identify</h3>
+            <div id="column-list"></div>
+            <h3>Set Threshold for Entity Confidence</h3>
+            <input type="number" id="threshold" value="0" min="0" max="1" step="0.01">
+        </div>
+        <div id="entity-selection" style="display:none;">
+            <h3>Select Entities to De-identify and Choose Strategy</h3>
+            <table id="config-table">
+                <thead>
+                <tr>
+                    <th>Entity</th>
+                    <th>Strategy</th>
+                </tr>
+                </thead>
+                <tbody id="config-table-body"></tbody>
+            </table>
+        </div>
+        <button id="recommend-btn" class="fancy-button" style="display:none;">
+            Recommend Strategy
+        </button>
+        <button id="process-file-btn" class="fancy-button" style="display:none;">
+            Process and De-identify
+        </button>
+    </div>
+
+    <!-- 右侧面板：显示去标识化后的结果 -->
+    <div class="right-panel">
+        <h2>De-identified Result</h2>
+        <div id="deid-result-table">
+            <p>De-identified results will appear here...</p>
+        </div>
+        <button id="download-btn" class="fancy-button" style="display: none;">
+            <i class="fas fa-download"></i> Download De-identified CSV
+        </button>
+    </div>
+</div>
+
+<!-- 文件上传弹窗 -->
+<div id="file-upload-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h3>Upload CSV File</h3>
+        <input type="file" id="file-input" accept=".csv">
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        let columns = []; // 存储CSV列名
+        let selectedColumns = []; // 用户选择的列
+        let threshold = 0.8; // 默认阈值
+        let userStrategies = {}; // 存储用户选择的策略
+
+        const ENTITY_WEIGHTS = {
+            "AGE": 2,
+            "SEX": 1,
+            "DATE": 2,
+            "DURATION": 1,
+            "HISTORY": 2,
+            "DETAILED_DESCRIPTION": 2,
+            "DIAGNOSTIC_PROCEDURE": 1,
+            "CLINICAL_EVENT": 1,
+            "DISEASE_DISORDER": 2,
+            "SIGN_SYMPTOM": 2,
+            "THERAPEUTIC_PROCEDURE": 1,
+            "MEDICATION": 2
+        };
+
+        // 打开文件上传弹窗
+        $('#upload-file-btn').click(function () {
+            $('#file-upload-modal').css('display', 'block');
+        });
+
+        // 关闭文件上传弹窗
+        $('.close-modal').click(function () {
+            $('#file-upload-modal').css('display', 'none');
+        });
+
+        // 读取文件并展示列选择和阈值
+        $('#file-input').change(function (e) {
+            const file = e.target.files[0];
+            if (!file) {
+                alert("Please select a CSV file.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                const csvData = event.target.result;
+                const rows = csvData.split('\n').map(row => row.split(','));
+
+                // 获取CSV列
+                columns = rows[0];
+                renderColumnSelection(columns);
+                $('#column-selection').show();
+
+                // 文件上传成功后，自动关闭上传弹窗
+                $('#file-upload-modal').css('display', 'none');
+
+                // 显式显示#entity-selection
+                $('#entity-selection').show();
+                renderEntityConfig(Object.keys(ENTITY_WEIGHTS)); // 渲染标签选择和策略
+
+                // 显示推荐策略和处理文件按钮
+                $('#recommend-btn').show();
+                $('#process-file-btn').show();
+            };
+            reader.readAsText(file);
+        });
+
+        // 渲染列选择器
+        function renderColumnSelection(columns) {
+            let html = '';
+            columns.forEach(col => {
+                html += `<input type="checkbox" class="column-checkbox" value="${col}">${col}<br>`;
+            });
+            $('#column-list').html(html);
+        }
+
+        // 渲染标签选择器和策略选择器
+        function renderEntityConfig(groups) {
+            let html = "";
+            groups.forEach(function(g) {
+                let selectedStrategy = userStrategies[g] || "none";
+                let generalizeOption = "";
+
+                // 仅当 g === "AGE" 或 "DATE" 时提供 "Generalize"
+                if (g === "AGE" || g === "DATE") {
+                    generalizeOption = `<option value="generalize"
+                ${selectedStrategy.startsWith("generalize") ? "selected" : ""}>Generalize</option>`;
+                }
+
+                html += `
+            <tr>
+                <td>${g}</td>
+                <td>
+                    <select class="strategy-select" data-group="${g}">
+                        <option value="none" ${selectedStrategy === "none" ? "selected" : ""}>None</option>
+                        <option value="delete" ${selectedStrategy === "delete" ? "selected" : ""}>Delete</option>
+                        ${generalizeOption}
+                        <option value="pseudonymize" ${selectedStrategy === "pseudonymize" ? "selected" : ""}>Pseudonymize</option>
+                    </select>
+                    <select class="sub-menu-select" data-group="${g}" style="display:none;">
+                        <option value="mild">mild</option>
+                        <option value="moderate">moderate</option>
+                        <option value="severe">severe</option>
+                    </select>
+                </td>
+            </tr>
+            `;
+            });
+
+            $('#config-table-body').html(html);
+
+            // 当主下拉改变时：若选 "generalize" => 显示二级下拉
+            $('.strategy-select').on('change', function() {
+                const group = $(this).data('group');
+                const selected = $(this).val();
+                const $subMenu = $(this).closest('td').find('.sub-menu-select');
+
+                // 修改 userStrategies，保留用户修改
+                userStrategies[group] = selected;
+
+                if (selected === "generalize") {
+                    $subMenu.show();
+                } else {
+                    $subMenu.hide();
+                }
+            });
+
+            // 如果 userStrategies[g] 已经是 "generalize_mild" 之类 => 回显
+            groups.forEach(function(g) {
+                if (userStrategies[g] && userStrategies[g].startsWith("generalize_")) {
+                    let level = userStrategies[g].split("_")[1];
+                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
+                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
+                    // 设置主下拉为 "generalize"
+                    $rowSelect.val("generalize");
+                    // 显示二级下拉
+                    $subSelect.show();
+                    // 选中 mild / moderate / severe
+                    $subSelect.val(level);
+                } else if (userStrategies[g] && userStrategies[g] === "pseudonymize") {
+                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
+                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
+                    // 设置主下拉为 "pseudonymize"
+                    $rowSelect.val("pseudonymize");
+                    // 隐藏二级下拉
+                    $subSelect.hide();
+                } else {
+                    // 默认隐藏二级下拉
+                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
+                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
+                    $rowSelect.val("none");
+                    $subSelect.hide();
+                }
+            });
+
+            $('#spinner').hide();
+            $('#deid-config').show();
+        }
+
+        // 渲染推荐策略功能
+        $('#recommend-btn').click(function() {
+            $('.strategy-select').each(function() {
+                const group = $(this).data('group');
+                let recommendedStrategy = 'none';
+
+                // 为不同的实体组提供推荐策略
+                if (group === "AGE" || group === "DATE") {
+                    recommendedStrategy = "generalize";
+                } else if (group === "DURATION") {
+                    recommendedStrategy = "pseudonymize";
+                }
+
+                // 设置推荐的策略值
+                $(this).val(recommendedStrategy);
+
+                const $subMenu = $(this).closest('td').find('.sub-menu-select');
+
+                if (recommendedStrategy === "generalize") {
+                    $subMenu.show();
+                    $subMenu.val("mild"); // 设置为 mild
+                } else if (recommendedStrategy === "pseudonymize") {
+                    $subMenu.hide();
+                } else {
+                    $subMenu.hide();
+                }
+            });
+        });
+
+        // 表单提交按钮逻辑
+        $('#process-file-btn').click(function () {
+            // 获取用户勾选的列
+            selectedColumns = $('.column-checkbox:checked').map(function () {
+                return $(this).val();
+            }).get();
+
+            threshold = $('#threshold').val();
+
+            // 收集 userStrategies 的策略
+            $('.strategy-select').each(function () {
+                const group = $(this).data('group');
+                let strategy = $(this).val();
+                if (strategy === "generalize") {
+                    const level = $(this).closest('td').find('.sub-menu-select').val();
+                    strategy = "generalize_" + level;
+                }
+                if (strategy !== "none") {
+
+                    userStrategies[group] = strategy;
+                } else {
+                    delete userStrategies[group];
+                }
+
+            });
+
+            // 删除最后的换行符
+            const selectedColumn = selectedColumns[0] || "";// 确保没有空白列
+
+            // 发送数据到后端
+            const formData = new FormData();
+            formData.append('file', $('#file-input')[0].files[0]);
+            formData.append('columns', selectedColumn); // 传递选择的列
+            formData.append('threshold', threshold);
+            formData.append('entity_strategies', JSON.stringify(userStrategies)); // 传递用户选择的策略
+
+            $.ajax({
+                url: '/process_file',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function (response) {
+                    if (response.error) {
+                        alert(response.error);
+                        return;
+                    }
+
+                    // 显示下载按钮
+                    $('#deid-result-table').html(`<table><tr><td>${response.result}</td></tr></table>`);
+                    $('#download-btn').show();
+
+                    // 处理下载功能
+                    $('#download-btn').click(function() {
+                        const resultData = typeof response.result === "string" ? response.result : JSON.stringify(response.result);
+                        // 创建一个 Blob 对象来下载 CSV 文件
+                        const blob = new Blob([resultData], { type: 'text/csv' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = 'de-identified_data.csv';  // 设置下载的文件名
+                        link.click();
+                        URL.revokeObjectURL(url);  // 清理URL对象
+                    });
+                },
+                error: function () {
+                    alert("An error occurred while processing the file.");
+                }
+            });
+        });
+
+        // 初始化实体标签
+        renderEntityConfig(Object.keys(ENTITY_WEIGHTS));
+    });
+</script>
+{% endblock %}

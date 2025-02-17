@@ -16,6 +16,9 @@
         <div id="overall-confidence" style="margin: 10px 0; font-size: 1.2em; font-weight: bold;">
             Overall Confidence Score: <span id="confidence-score">-</span>
         </div>
+        <div id="privacy-score" style="margin: 10px 0; font-size: 1.2em; font-weight: bold;">
+            Privacy Score: <span id="privacy-score-value">-</span>
+        </div>
         <div id="filter-slider" style="display: none; margin: 10px 0;">
             <label for="threshold-slider">Threshold:</label>
             <input type="range" id="threshold-slider" min="0" max="1" step="0.01" value="0" />
@@ -40,6 +43,7 @@
                 success: function (response) {
                     $('#ner-result').html(response.result);
                     $('#confidence-score').text(response.overall_confidence.toFixed(2)); // Update confidence score
+                    $('#privacy-score-value').text(response.privacy_score.toFixed(2)); // Update privacy score
                 }
             });
         });
@@ -65,6 +69,7 @@
                 success: function (response) {
                     $('#ner-result').html(response.result);
                     $('#confidence-score').text(response.overall_confidence.toFixed(2)); // Update confidence score
+                    $('#privacy-score-value').text(response.privacy_score.toFixed(2)); // Update privacy score
                 }
             });
         });

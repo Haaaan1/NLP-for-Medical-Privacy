@@ -203,6 +203,10 @@
         <button id="configure-deid-btn" class="fancy-button">
             <i class="fas fa-magic"></i> Configure De-identification
         </button>
+        <br><br>
+        <button id="go-to-file-btn" class="fancy-button">
+            <i class="fas fa-file-upload"></i> Go to File Upload
+        </button>
     </div>
 
     <!-- 右侧输出 -->
@@ -490,6 +494,10 @@
                     delete userStrategies[group];
                 }
             });
+        });
+
+        $('#go-to-file-btn').click(function () {
+            window.location.href = '/deidentification/file';
         });
     });
 
