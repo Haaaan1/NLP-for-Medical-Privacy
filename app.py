@@ -172,19 +172,11 @@ def do_replacement(orig, start, end, replacement):
 
 
 def process_text_by_paragraphs(original_text, nlp_pipeline):
-    """
-    按段落分割文本并分别进行NER处理，最后合并结果。
-    :param original_text: 原始文本（包含多段文字，用换行符分隔）
-    :param nlp_pipeline: NER处理函数
-    :return: 合并后的NER结果
-    """
     # 按换行符分割段落
     paragraphs = original_text.split('\n')
 
     # 去除空段落（如果有）
     paragraphs = [para.strip() for para in paragraphs if para.strip()]
-    print("Paragraphs after split and cleaning:")
-    print(paragraphs)
 
     # 对每个段落进行NER处理
     ner_results = []
@@ -203,16 +195,10 @@ def process_text_by_paragraphs(original_text, nlp_pipeline):
         # 更新偏移量（每个段落的长度加上换行符）
         offset += len(paragraph) + 2  # 加1是为了包含换行符
 
-    print("NER results after processing each paragraph:")
-    print(ner_results)
-
     # 合并结果
     merged_results = []
     for result in ner_results:
         merged_results.extend(result)  # 将每个段落的结果合并成一个列表
-
-    print("Merged NER results:")
-    print(merged_results)
 
     return merged_results
 
@@ -335,6 +321,7 @@ def process():
 def process_deid():
     text = request.form['text']
     ner_results = process_text_by_paragraphs(text, nlp_pipeline)
+    privacy_score_before = calculate_privacy_score(ner_results)
 
     entities = []
     for entity in ner_results:
@@ -350,7 +337,8 @@ def process_deid():
     return jsonify({
         'entities': entities,
         'entity_groups': entity_groups,
-        'original_text': text
+        'original_text': text,
+        'privacy_score_before': privacy_score_before
     })
 
 
@@ -396,8 +384,13 @@ def apply_deid():
             replaced_text = do_replacement(replaced_text, start, end, generalized)
 
     replaced_text = " ".join(replaced_text.split())
+    ner_results_after = process_text_by_paragraphs(replaced_text, nlp_pipeline)
+    privacy_score_after = calculate_privacy_score(ner_results_after)
 
-    return jsonify({'deidentified_text': replaced_text})
+    return jsonify({
+        'deidentified_text': replaced_text,
+        'privacy_score_after': privacy_score_after
+    })
 
 
 @app.route('/process_file', methods=['POST'])
@@ -422,8 +415,6 @@ def process_file():
 
         # 读取CSV文件
         df = pd.read_csv(io.BytesIO(file.read()))
-        print("First 3 rows of the uploaded CSV:")
-        print(df.head(3))
 
         # 检查选中的列是否存在
         if selected_column not in df.columns:
@@ -432,11 +423,14 @@ def process_file():
         # 根据用户选择的列进行去标识化处理
         results = []
 
+        total_privacy_risk_level_before = 0
+        total_privacy_risk_level_after = 0
+        count = 0
+
         for index, row in df.iterrows():
             # 获取原始文本（假设选中的列）
             original_text = row.get(selected_column, '')  # 使用正确的列名
             if not original_text:
-                print(f"Skipping row {index}, no '{selected_column}' column found or empty text.")
                 continue  # 如果没有文本，则跳过
 
             # 获取命名实体识别（NER）结果
@@ -444,8 +438,8 @@ def process_file():
 
             # 如果没有实体，跳过此行
             if not ner_results:
-                print(f"No entities found for row {index}")
                 continue
+            privacy_risk_level_before = calculate_privacy_score(ner_results)
 
             # 进行实体去标识化
             replaced_text = original_text
@@ -485,16 +479,32 @@ def process_file():
                         generalized = "[GENERALIZED]"
                     replaced_text = do_replacement(replaced_text, start, end, generalized)
 
-                print(f"Replaced text after processing entity: {replaced_text}")
-
             results.append({
                 'De-identified_text': replaced_text
             })
+
+            # Calculate risk level
+            ner_results_after = process_text_by_paragraphs(replaced_text, nlp_pipeline)
+            privacy_risk_level_after = calculate_privacy_score(ner_results_after)
+            total_privacy_risk_level_before += privacy_risk_level_before
+            total_privacy_risk_level_after += privacy_risk_level_after
+            count += 1
 
         # 确保结果不为空
         if not results:
             print("No valid data was processed. Returning empty result.")
             return jsonify({'error': 'No valid data was processed.'}), 400
+        # 计算平均值
+        if count > 0:
+            avg_privacy_risk_level_before = total_privacy_risk_level_before / count
+            avg_privacy_risk_level_after = total_privacy_risk_level_after / count
+        else:
+            avg_privacy_risk_level_before = 0
+            avg_privacy_risk_level_after = 0
+
+        # 输出平均值
+        print(f"Average Privacy Risk Level Before De-identification: {avg_privacy_risk_level_before}")
+        print(f"Average Privacy Risk Level After De-identification: {avg_privacy_risk_level_after}")
 
         # 将去标识化结果转换为CSV格式并返回
         result_df = pd.DataFrame(results)
@@ -504,7 +514,9 @@ def process_file():
 
         # 返回去标识化后的CSV内容
         return jsonify({
-            'result': output.getvalue()
+            'result': output.getvalue(),
+            'avg_privacy_risk_level_before': avg_privacy_risk_level_before,
+            'avg_privacy_risk_level_after': avg_privacy_risk_level_after
         })
 
     except Exception as e:
