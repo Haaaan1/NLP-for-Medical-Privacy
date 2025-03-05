@@ -43,21 +43,7 @@ COLOR_PALETTE = [
     "#ffc6ff", "#fdffb6", "#c3aed6", "#a0c4ff", "#bdb2ff", "#ffafcc"
 ]
 
-# Define entity weights
-ENTITY_WEIGHTS = {
-    "AGE": 2,
-    "SEX": 1,
-    "DATE": 2,
-    "DURATION": 1,
-    "HISTORY": 2,
-    "DETAILED_DESCRIPTION": 2,
-    "DIAGNOSTIC_PROCEDURE": 1,
-    "CLINICAL_EVENT": 1,
-    "DISEASE_DISORDER": 2,
-    "SIGN_SYMPTOM": 2,
-    "THERAPEUTIC_PROCEDURE": 1,
-    "MEDICATION": 2,
-}
+
 
 
 # Assign color for new labels if they are not in LABEL_COLORS
@@ -77,6 +63,23 @@ def get_confidence_color(confidence):
         return "yellow"
     else:
         return "red"
+
+
+# Define entity weights
+ENTITY_WEIGHTS = {
+    "AGE": 2,
+    "SEX": 1,
+    "DATE": 2,
+    "DURATION": 1,
+    "HISTORY": 2,
+    "DETAILED_DESCRIPTION": 2,
+    "DIAGNOSTIC_PROCEDURE": 1,
+    "CLINICAL_EVENT": 1,
+    "DISEASE_DISORDER": 2,
+    "SIGN_SYMPTOM": 2,
+    "THERAPEUTIC_PROCEDURE": 1,
+    "MEDICATION": 2,
+}
 
 
 def calculate_privacy_score(entities):
@@ -402,8 +405,8 @@ def process_file():
             return jsonify({'error': 'No file uploaded'}), 400
 
         # 获取传递的列名、阈值和实体策略
-        selected_column = request.form.get('columns', '')  # 假定传递的是一个字符串
-        threshold = float(request.form.get('threshold', 0))  # 默认阈值0
+        selected_column = request.form.get('columns', '')
+        threshold = float(request.form.get('threshold', 0))
         entity_strategies = json.loads(request.form.get('entity_strategies', '{}'))
         selected_column = selected_column.strip()
         selected_column = selected_column.replace('\r\n', '')
