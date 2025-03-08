@@ -298,6 +298,17 @@
             </div>
             <div id="privacy-score-value"></div>
         </div>
+        <div id="language-selection" style="margin-top: 1rem; font-family: 'Segoe UI';">
+            <p>Select Language:</p>
+            <label>
+                <input type="radio" name="language" value="en" checked>
+                <span>🇬🇧 English</span>
+            </label>
+            <label style="margin-left: 1rem;">
+                <input type="radio" name="language" value="de">
+                <span>🇩🇪 German</span>
+            </label>
+        </div>
         <div id="spinner" class="spinner"></div>
         <div id="deid-config" style="display:none;">
             <p style="margin-top: 0.5rem; font-family: 'Segoe UI';">
@@ -342,6 +353,11 @@
         let threshold = 0;
         let privacy_score_before = 0;
         let privacy_score_after = 0;
+        let language = "en";
+
+        $('input[name="language"]').on('change', function() {
+            language = $(this).val();
+        });
 
         // 滑块事件：更新显示值
         $('#threshold-slider').on('input', function () {
@@ -382,7 +398,9 @@
             $.ajax({
                 url: '/process_deid',
                 type: 'POST',
-                data: { text: text, threshold: threshold},
+                data: {
+                    text: text,
+                    threshold: threshold},
                 success: function (response) {
                     originalText = response.original_text;
                     entities = response.entities;
@@ -556,7 +574,8 @@
                     original_text: originalText,
                     strategies: strategies,
                     entities: entities,
-                    threshold: threshold
+                    threshold: threshold,
+                    language: language
                 }),
                 success: function(response) {
                     $('#deid-result').html("<p>" + response.deidentified_text + "</p>");

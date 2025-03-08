@@ -4,6 +4,7 @@ import random
 import re
 import json
 from datetime import datetime
+import dateparser
 from dateutil import parser
 import pandas as pd
 import io
@@ -14,6 +15,12 @@ app = Flask(__name__)
 nlp_pipeline = pipeline(
     "token-classification",
     model="Clinical-AI-Apollo/Medical-NER",
+    aggregation_strategy='simple'
+)
+
+nlp_pipeline_germain = pipeline(
+    "token-classification",
+    model="HUMADEX/german_medical_ner",
     aggregation_strategy='simple'
 )
 
@@ -42,8 +49,6 @@ COLOR_PALETTE = [
     "#e0c3fc", "#bde0fe", "#ffccf9", "#ffd6a5", "#caffbf", "#9bf6ff",
     "#ffc6ff", "#fdffb6", "#c3aed6", "#a0c4ff", "#bdb2ff", "#ffafcc"
 ]
-
-
 
 
 # Assign color for new labels if they are not in LABEL_COLORS
@@ -105,10 +110,12 @@ def calculate_privacy_score(entities):
     return final_score
 
 
-def generalize_age(age_str, level="mild"):
+def generalize_age(age_str, level="mild", language="en"):
+    # 使用传入的 language 参数，不再自动检测输入字符串中的语言
     pattern = re.compile(
-        r'\b(\d+)\s*(?:-year-old|years old|years-old|yr-old|years|year|yrs)\b'
-        r'|\bage\s*[:\-]?\s*(\d+)\b',
+        r'\b(\d+)[\s-]*(?:year-old|years old|years-old|yr-old|years|year|yrs|'
+        r'Jahre(?:[\s-]*(?:alt))?|Jahr(?:[\s-]*(?:alt))?|jährig|jährige)\b'
+        r'|\b(?:age|alter)[\s-]*[:\-]?\s*(\d+)\b',
         re.IGNORECASE
     )
 
@@ -133,37 +140,62 @@ def generalize_age(age_str, level="mild"):
         lower_bound = (original_age // interval) * interval
         upper_bound = lower_bound + interval
 
-        lower_bound = max(lower_bound, 0)
-        upper_bound = max(upper_bound, 0)
-
-        return f"{lower_bound}-{upper_bound}"
+        # 根据传入的 language 参数添加后缀
+        if language == "de":
+            return f"{lower_bound}-{upper_bound} Jahre alt"
+        else:
+            return f"{lower_bound}-{upper_bound} years old"
 
     generalized_str = pattern.sub(replace_age, age_str)
 
     if generalized_str == age_str:
-        return "[AGE]"
+        return "[ALTER]" if language == "de" else "[AGE]"
     return generalized_str
 
 
-def generalize_date(date_str, level="mild"):
-    try:
-        parsed_date = parser.parse(date_str, fuzzy=True)
-        year = parsed_date.year
+def generalize_date(date_str, level="mild", language="en"):
+    # 使用 dateparser 解析日期，并指定解析语言
+    parsed_date = dateparser.parse(date_str, languages=[language])
+    if not parsed_date:
+        return "[DATE]" if language == "en" else "[DATUM]"
 
-        has_month = any(part.isdigit() and 1 <= int(part) <= 12 for part in date_str.split('-'))
+    year = parsed_date.year
 
+    # 用更宽泛的分隔符拆分字符串以检查是否包含月份数字
+    parts = re.split(r'[\s\-/\.]+', date_str)
+    has_month = any(part.isdigit() and 1 <= int(part) <= 12 for part in parts)
+
+    if level == "mild":
+        result = f"{year}-{parsed_date.month:02d}" if has_month else f"{year}-XX"
+    elif level == "moderate":
+        result = f"{year}"
+    elif level == "severe":
+        min_year = year - 2
+        max_year = year + 8
+        result = f"{min_year}-{max_year}"
+    else:
+        return "[DATE]" if language == "en" else "[DATUM]"
+
+    # 根据语言附加特定的后缀
+    if language == "de":
         if level == "mild":
-            return f"{year}-{parsed_date.month:02d}" if has_month else f"{year}-XX"
+            suffix = " (Jahr-Monat)" if has_month else " (Jahr-XX)"
         elif level == "moderate":
-            return f"{year}"
+            suffix = " (Jahr)"
         elif level == "severe":
-            min_year = year - 2
-            max_year = year + 8
-            return f"{min_year}-{max_year}"
+            suffix = " (ungefähr)"
         else:
-            return "[DATE]"
-    except ValueError:
-        return "[DATE]"
+            suffix = ""
+    else:
+        if level == "mild":
+            suffix = " (Year-Month)" if has_month else " (Year-XX)"
+        elif level == "moderate":
+            suffix = " (Year)"
+        elif level == "severe":
+            suffix = " (approx.)"
+        else:
+            suffix = ""
+    return result + suffix
 
 
 def do_replacement(orig, start, end, replacement):
@@ -204,6 +236,7 @@ def process_text_by_paragraphs(original_text, nlp_pipeline):
         merged_results.extend(result)  # 将每个段落的结果合并成一个列表
 
     return merged_results
+
 
 @app.route('/')
 @app.route('/ner')
@@ -352,6 +385,7 @@ def apply_deid():
     strategies = data['strategies']
     entities = data['entities']
     threshold = float(data.get('threshold', 0))
+    language = data['language']
 
     replaced_text = original_text
 
@@ -369,7 +403,7 @@ def apply_deid():
         text_slice = ent['text']
 
         if strategy == "delete":
-            replaced_text = do_replacement(replaced_text, start, end, "[REDACTED]")
+            replaced_text = do_replacement(replaced_text, start, end, "[ZENSIERT]" if language == "de" else "[REDACTED]")
         elif strategy == "pseudonymize":
             if eg not in pseudonym_counters:
                 pseudonym_counters[eg] = 0
@@ -379,11 +413,11 @@ def apply_deid():
         elif strategy.startswith("generalize"):
             level = strategy.split("_")[1]
             if eg == "AGE":
-                generalized = generalize_age(text_slice, level)
+                generalized = generalize_age(text_slice, level, language)
             elif eg == "DATE":
-                generalized = generalize_date(text_slice, level)
+                generalized = generalize_date(text_slice, level, language)
             else:
-                generalized = "[GENERALIZED]"
+                generalized = "[GENERALIERT]" if language == "de" else "[GENERALIZED]"
             replaced_text = do_replacement(replaced_text, start, end, generalized)
 
     replaced_text = " ".join(replaced_text.split())
@@ -410,6 +444,7 @@ def process_file():
         entity_strategies = json.loads(request.form.get('entity_strategies', '{}'))
         selected_column = selected_column.strip()
         selected_column = selected_column.replace('\r\n', '')
+        language = request.form.get('language', 'en')
 
         # 打印接收到的字段，用于调试
         print(f"Selected column: {selected_column}")
@@ -465,21 +500,26 @@ def process_file():
 
                 # 根据策略进行处理
                 if strategy == "delete":
-                    replaced_text = do_replacement(replaced_text, start, end, "[REDACTED]")
+                    if language == "en":
+                        replaced_text = do_replacement(replaced_text, start, end, "[REDACTED]")
+                    else:
+                        replaced_text = do_replacement(replaced_text, start, end, "[ZENSIERT]")
                 elif strategy == "pseudonymize":
                     if entity_group not in pseudonym_counters:
                         pseudonym_counters[entity_group] = 0
                     pseudonym_counters[entity_group] += 1
                     letter = chr(65 + (pseudonym_counters[entity_group] - 1) % 26)
-                    replaced_text = do_replacement(replaced_text, start, end, f"{entity_group}_{letter}")
+                    # 根据语言可以调整伪名格式，这里暂时保持不变
+                    replacement = f"{entity_group}_{letter}"
+                    replaced_text = do_replacement(replaced_text, start, end, replacement)
                 elif strategy.startswith("generalize"):
                     level = strategy.split("_")[1]
                     if entity_group == "AGE":
-                        generalized = generalize_age(text_slice, level)
+                        generalized = generalize_age(text_slice, level, language)
                     elif entity_group == "DATE":
-                        generalized = generalize_date(text_slice, level)
+                        generalized = generalize_date(text_slice, level, language)
                     else:
-                        generalized = "[GENERALIZED]"
+                        generalized = "[GENERALIZED]" if language == "en" else "[GENERALIERT]"
                     replaced_text = do_replacement(replaced_text, start, end, generalized)
 
             results.append({
