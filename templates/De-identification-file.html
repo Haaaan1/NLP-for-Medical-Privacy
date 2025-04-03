@@ -135,6 +135,17 @@
             <h3>Set Threshold for Entity Confidence</h3>
             <input type="number" id="threshold" value="0" min="0" max="1" step="0.01">
         </div>
+        <div id="language-selection" style="margin-top: 1rem; font-family: 'Segoe UI';">
+            <p>Select Language:</p>
+            <label>
+                <input type="radio" name="language" value="en" checked>
+                <span>🇬🇧 English</span>
+            </label>
+            <label style="margin-left: 1rem;">
+                <input type="radio" name="language" value="de">
+                <span>🇩🇪 German</span>
+            </label>
+        </div>
         <div id="entity-selection" style="display:none;">
             <h3>Select Entities to De-identify and Choose Strategy</h3>
             <table id="config-table">
@@ -202,6 +213,11 @@
         let userStrategies = {}; // 存储用户选择的策略
         let privacy_score_before = 0;
         let privacy_score_after = 0;
+        let language = "en";
+
+        $('input[name="language"]').on('change', function() {
+            language = $(this).val();
+        });
 
         const ENTITY_WEIGHTS = {
             "AGE": 2,
@@ -223,31 +239,27 @@
             $('#spinner').show();
             $('#download-btn').hide();
             $('#success-message').hide();
-            $('#progress-container').show();  // Show progress bar while processing
+            $('#progress-container').show();
         };
 
         const hideSpinner = () => {
             $('#spinner').hide();
             $('#download-btn').show();
             $('#success-message').show();
-            $('#progress-container').hide();  // Hide progress bar when processing is complete
+            $('#progress-container').hide();
         };
 
         $('#go-to-text-btn').click(function() {
-            window.location.href = "http://127.0.0.1:5000/deidentification";  // 跳转到指定页面
+            window.location.href = "http://127.0.0.1:5000/deidentification";
         });
 
         // 当鼠标悬浮在图标上时
         $('#info-icon').hover(function(event) {
             $('#info-popup').show();
-
-            // 获取图标的坐标
             const iconOffset = $(this).offset();
-
-            // 设置悬浮框显示在图标的右侧
             $('#info-popup').css({
-                left: iconOffset.left + 20 + 'px',  // 偏移20px来确保悬浮框不与图标重叠
-                top: iconOffset.top - 10 + 'px'    // 垂直上方微调10px
+                left: iconOffset.left + 20 + 'px',
+                top: iconOffset.top - 10 + 'px'
             });
         }, function() {
             $('#info-popup').hide();
@@ -270,40 +282,32 @@
                 alert("Please select a CSV file.");
                 return;
             }
-
             const reader = new FileReader();
             reader.onload = function (event) {
                 const csvData = event.target.result;
                 const rows = csvData.split('\n').map(row => row.split(','));
-
-                // 获取CSV列
                 columns = rows[0];
                 renderColumnSelection(columns);
                 $('#column-selection').show();
-
-                // 文件上传成功后，自动关闭上传弹窗
                 $('#file-upload-modal').css('display', 'none');
-
-                // 显式显示#entity-selection
                 $('#entity-selection').show();
-                renderEntityConfig(Object.keys(ENTITY_WEIGHTS)); // 渲染标签选择和策略
-
-                // 显示推荐策略和处理文件按钮
+                renderEntityConfig(Object.keys(ENTITY_WEIGHTS));
                 $('#recommend-btn').show();
                 $('#process-file-btn').show();
             };
             reader.readAsText(file);
         });
 
-        // 渲染列选择器
+        // 修改后的渲染列选择器，自动勾选第一列
         function renderColumnSelection(columns) {
             let html = '';
-            columns.forEach(col => {
-                html += `<input type="radio" class="column-checkbox" value="${col}">${col}<br>`;
+            columns.forEach((col, index) => {
+                // 自动勾选第一列（如果只有一列或多列，均勾选第一个）
+                let checked = index === 0 ? "checked" : "";
+                html += `<input type="radio" class="column-checkbox" name="column-selection" value="${col}" ${checked}>${col}<br>`;
             });
             $('#column-list').html(html);
         }
-
 
         function updateProgressBar(progress) {
             $('#progress-container').show();
@@ -317,13 +321,10 @@
             groups.forEach(function(g) {
                 let selectedStrategy = userStrategies[g] || "none";
                 let generalizeOption = "";
-
-                // 仅当 g === "AGE" 或 "DATE" 时提供 "Generalize"
                 if (g === "AGE" || g === "DATE") {
                     generalizeOption = `<option value="generalize"
                 ${selectedStrategy.startsWith("generalize") ? "selected" : ""}>Generalize</option>`;
                 }
-
                 html += `
             <tr>
                 <td>${g}</td>
@@ -343,53 +344,38 @@
             </tr>
             `;
             });
-
             $('#config-table-body').html(html);
-
-            // 当主下拉改变时：若选 "generalize" => 显示二级下拉
             $('.strategy-select').on('change', function() {
                 const group = $(this).data('group');
                 const selected = $(this).val();
                 const $subMenu = $(this).closest('td').find('.sub-menu-select');
-
-                // 修改 userStrategies，保留用户修改
                 userStrategies[group] = selected;
-
                 if (selected === "generalize") {
                     $subMenu.show();
                 } else {
                     $subMenu.hide();
                 }
             });
-
-            // 如果 userStrategies[g] 已经是 "generalize_mild" 之类 => 回显
             groups.forEach(function(g) {
                 if (userStrategies[g] && userStrategies[g].startsWith("generalize_")) {
                     let level = userStrategies[g].split("_")[1];
                     let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
                     let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
-                    // 设置主下拉为 "generalize"
                     $rowSelect.val("generalize");
-                    // 显示二级下拉
                     $subSelect.show();
-                    // 选中 mild / moderate / severe
                     $subSelect.val(level);
                 } else if (userStrategies[g] && userStrategies[g] === "pseudonymize") {
                     let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
                     let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
-                    // 设置主下拉为 "pseudonymize"
                     $rowSelect.val("pseudonymize");
-                    // 隐藏二级下拉
                     $subSelect.hide();
                 } else {
-                    // 默认隐藏二级下拉
                     let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
                     let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
                     $rowSelect.val("none");
                     $subSelect.hide();
                 }
             });
-
             $('#spinner').hide();
             $('#deid-config').show();
         }
@@ -399,22 +385,16 @@
             $('.strategy-select').each(function() {
                 const group = $(this).data('group');
                 let recommendedStrategy = 'none';
-
-                // 为不同的实体组提供推荐策略
                 if (group === "AGE" || group === "DATE") {
                     recommendedStrategy = "generalize";
                 } else if (group === "DURATION") {
                     recommendedStrategy = "pseudonymize";
                 }
-
-                // 设置推荐的策略值
                 $(this).val(recommendedStrategy);
-
                 const $subMenu = $(this).closest('td').find('.sub-menu-select');
-
                 if (recommendedStrategy === "generalize") {
                     $subMenu.show();
-                    $subMenu.val("mild"); // 设置为 mild
+                    $subMenu.val("mild");
                 } else if (recommendedStrategy === "pseudonymize") {
                     $subMenu.hide();
                 } else {
@@ -423,17 +403,34 @@
             });
         });
 
-        // 表单提交按钮逻辑
+        // 在 process 按钮中检查必选项：列、语言、阈值和至少一个实体策略
         $('#process-file-btn').click(function () {
+            // 检查列是否选中
+            if ($('.column-checkbox:checked').length === 0) {
+                alert("请先选择一个列进行去标识化。");
+                return;
+            }
+            // 检查语言是否选中（radio 默认必选，但此处可加保险）
+            if (!$('input[name="language"]:checked').val()) {
+                alert("请选择语言。");
+                return;
+            }
+            // 检查阈值是否填写且有效
+            let thresholdVal = $('#threshold').val();
+            if (thresholdVal === "" || isNaN(thresholdVal)) {
+                alert("请设置有效的阈值。");
+                return;
+            }
+            // 检查是否至少选择了一个实体的策略（非 "none"）
+            if ($('.strategy-select').filter(function() { return $(this).val() !== "none"; }).length === 0) {
+                alert("请至少为一个实体选择去标识策略。");
+                return;
+            }
             showSpinner();
-            // 获取用户勾选的列
             selectedColumns = $('.column-checkbox:checked').map(function () {
                 return $(this).val();
             }).get();
-
             threshold = $('#threshold').val();
-
-            // 收集 userStrategies 的策略
             $('.strategy-select').each(function () {
                 const group = $(this).data('group');
                 let strategy = $(this).val();
@@ -442,24 +439,18 @@
                     strategy = "generalize_" + level;
                 }
                 if (strategy !== "none") {
-
                     userStrategies[group] = strategy;
                 } else {
                     delete userStrategies[group];
                 }
-
             });
-
-            // 删除最后的换行符
-            const selectedColumn = selectedColumns[0] || "";// 确保没有空白列
-
-            // 发送数据到后端
+            const selectedColumn = selectedColumns[0] || "";
             const formData = new FormData();
             formData.append('file', $('#file-input')[0].files[0]);
-            formData.append('columns', selectedColumn); // 传递选择的列
+            formData.append('columns', selectedColumn);
             formData.append('threshold', threshold);
-            formData.append('entity_strategies', JSON.stringify(userStrategies)); // 传递用户选择的策略
-
+            formData.append('language', language);
+            formData.append('entity_strategies', JSON.stringify(userStrategies));
             $.ajax({
                 url: '/process_file',
                 type: 'POST',
@@ -472,25 +463,20 @@
                         return;
                     }
                     hideSpinner();
-
-                    // 显示下载按钮
                     $('#deid-result-table').html(`<table><tr><td>${response.result}</td></tr></table>`);
                     $('#download-btn').show();
                     privacy_score_before = Math.floor(response.avg_privacy_risk_level_before * 100);
                     privacy_score_after = Math.floor(response.avg_privacy_risk_level_after * 100);
                     renderPrivacyDashboard(privacy_score_before, privacy_score_after);
-
-                    // 处理下载功能
                     $('#download-btn').click(function() {
                         const resultData = typeof response.result === "string" ? response.result : JSON.stringify(response.result);
-                        // 创建一个 Blob 对象来下载 CSV 文件
                         const blob = new Blob([resultData], { type: 'text/csv' });
                         const url = URL.createObjectURL(blob);
                         const link = document.createElement('a');
                         link.href = url;
-                        link.download = 'de-identified_data.csv';  // 设置下载的文件名
+                        link.download = 'de-identified_data.csv';
                         link.click();
-                        URL.revokeObjectURL(url);  // 清理URL对象
+                        URL.revokeObjectURL(url);
                     });
                 },
                 error: function () {
@@ -500,99 +486,88 @@
         });
 
         function renderPrivacyDashboard(before, after) {
-            // 初始化 ECharts 实例
             let myEchart = echarts.init(document.getElementById('gaugePlot'));
-
-            // 设置仪表盘配置项
             let option = {
                 series: [
                     {
-                        type: 'gauge', // 仪表盘类型
-                        min: 0,        // 最小值
-                        max: 100,      // 最大值
-                        splitNumber: 10, // 分割段数
+                        type: 'gauge',
+                        min: 0,
+                        max: 100,
+                        splitNumber: 10,
                         axisLine: {
                             lineStyle: {
-                                width: 20, // 轴线宽度
+                                width: 20,
                                 color: [
-                                    [0.3, '#67e0e3'], // 0-30% 浅色
-                                    [0.7, '#37a2da'], // 30%-70% 中等色
-                                    [1, '#fd666d']    // 70%-100% 深色
+                                    [0.3, '#67e0e3'],
+                                    [0.7, '#37a2da'],
+                                    [1, '#fd666d']
                                 ]
                             }
                         },
                         pointer: {
                             itemStyle: {
-                                color: 'auto' // 指针颜色自动匹配
+                                color: 'auto'
                             }
                         },
                         axisTick: {
-                            distance: -20, // 刻度线与轴线的距离
-                            length: 8,     // 刻度线长度
+                            distance: -20,
+                            length: 8,
                             lineStyle: {
-                                color: '#fff', // 刻度线颜色
+                                color: '#fff',
                                 width: 2
                             }
                         },
                         splitLine: {
-                            distance: -20, // 分割线与轴线的距离
-                            length: 20,   // 分割线长度
+                            distance: -20,
+                            length: 20,
                             lineStyle: {
-                                color: '#fff', // 分割线颜色
+                                color: '#fff',
                                 width: 4
                             }
                         },
                         axisLabel: {
-                            color: 'auto', // 刻度标签颜色
-                            distance: 40,   // 刻度标签与轴线的距离
+                            color: 'auto',
+                            distance: 40,
                             fontSize: 14
                         },
                         title: {
                             show: true,
-                            offsetCenter: [0, '70%'], // 标题位置
+                            offsetCenter: [0, '70%'],
                             fontSize: 16,
                             color: '#333'
                         },
                         detail: {
                             fontSize: 24,
-                            offsetCenter: [0, '40%'], // 详情位置
-                            valueAnimation: true,     // 数值动画
-                            formatter: '{value}',    // 格式化显示
+                            offsetCenter: [0, '40%'],
+                            valueAnimation: true,
+                            formatter: '{value}',
                             color: 'auto'
                         },
                         data: [
-                            { value: before, name: 'Before' }, // 第一个指针
-                            { value: after, name: 'After' }    // 第二个指针
+                            { value: before, name: 'Before' },
+                            { value: after, name: 'After' }
                         ]
                     }
                 ]
             };
-
-            // 动态修改Before和After文本的位置，避免重叠
             option.series[0].data = [
                 {
                     value: before,
                     name: 'Before',
-                    title: { offsetCenter: ['-40%', '80%'] }, // 修改位置
-                    detail: { offsetCenter: ['-40%', '95%'] } // 修改位置
+                    title: { offsetCenter: ['-40%', '80%'] },
+                    detail: { offsetCenter: ['-40%', '95%'] }
                 },
                 {
                     value: after,
                     name: 'After',
-                    title: { offsetCenter: ['40%', '80%'] },  // 修改位置
-                    detail: { offsetCenter: ['40%', '95%'] }  // 修改位置
+                    title: { offsetCenter: ['40%', '80%'] },
+                    detail: { offsetCenter: ['40%', '95%'] }
                 }
             ];
-
-            // 设置配置项并渲染图表
             myEchart.setOption(option);
         }
 
-        // 初始化隐私分数仪表盘
         renderPrivacyDashboard(privacy_score_before, privacy_score_after);
-
-
-        // 初始化实体标签
         renderEntityConfig(Object.keys(ENTITY_WEIGHTS));
     });
 </script>

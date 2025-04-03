@@ -87,7 +87,7 @@ ENTITY_WEIGHTS = {
 }
 
 
-def calculate_privacy_score(entities):
+def calculate_privacy_risk_level(entities):
     total_entities = len(entities)
     if total_entities == 0:
         return 0.0
@@ -111,7 +111,7 @@ def calculate_privacy_score(entities):
 
 
 def generalize_age(age_str, level="mild", language="en"):
-    # 使用传入的 language 参数，不再自动检测输入字符串中的语言
+    # Use the provided language parameter without auto-detecting language
     pattern = re.compile(
         r'\b(\d+)[\s-]*(?:year-old|years old|years-old|yr-old|years|year|yrs|'
         r'Jahre(?:[\s-]*(?:alt))?|Jahr(?:[\s-]*(?:alt))?|jährig|jährige)\b'
@@ -140,28 +140,26 @@ def generalize_age(age_str, level="mild", language="en"):
         lower_bound = (original_age // interval) * interval
         upper_bound = lower_bound + interval
 
-        # 根据传入的 language 参数添加后缀
+        # Append language-specific suffix
         if language == "de":
             return f"{lower_bound}-{upper_bound} Jahre alt"
         else:
             return f"{lower_bound}-{upper_bound} years old"
 
     generalized_str = pattern.sub(replace_age, age_str)
-
     if generalized_str == age_str:
         return "[ALTER]" if language == "de" else "[AGE]"
     return generalized_str
 
 
 def generalize_date(date_str, level="mild", language="en"):
-    # 使用 dateparser 解析日期，并指定解析语言
+    # Parse the date using dateparser with the specified language
     parsed_date = dateparser.parse(date_str, languages=[language])
     if not parsed_date:
         return "[DATE]" if language == "en" else "[DATUM]"
 
     year = parsed_date.year
-
-    # 用更宽泛的分隔符拆分字符串以检查是否包含月份数字
+    # Split the string using a broad set of delimiters to check for month presence
     parts = re.split(r'[\s\-/\.]+', date_str)
     has_month = any(part.isdigit() and 1 <= int(part) <= 12 for part in parts)
 
@@ -176,7 +174,7 @@ def generalize_date(date_str, level="mild", language="en"):
     else:
         return "[DATE]" if language == "en" else "[DATUM]"
 
-    # 根据语言附加特定的后缀
+    # Append language-specific suffix
     if language == "de":
         if level == "mild":
             suffix = " (Jahr-Monat)" if has_month else " (Jahr-XX)"
@@ -207,33 +205,26 @@ def do_replacement(orig, start, end, replacement):
 
 
 def process_text_by_paragraphs(original_text, nlp_pipeline):
-    # 按换行符分割段落
-    paragraphs = original_text.split('\n')
+    # Split text by newline and remove empty paragraphs
+    paragraphs = [para.strip() for para in original_text.split('\n') if para.strip()]
 
-    # 去除空段落（如果有）
-    paragraphs = [para.strip() for para in paragraphs if para.strip()]
-
-    # 对每个段落进行NER处理
     ner_results = []
-    offset = 0  # 用来记录当前段落在整个文本中的起始偏移量
+    offset = 0  # Track the starting offset for each paragraph in the entire text
 
     for paragraph in paragraphs:
         result = nlp_pipeline(paragraph)
-
-        # 对每个实体，调整其起始位置和结束位置
+        # Adjust each entity's start and end positions to the overall text
         for entity in result:
-            entity['start'] += offset  # 调整实体的起始位置
-            entity['end'] += offset    # 调整实体的结束位置
-
+            entity['start'] += offset
+            entity['end'] += offset
         ner_results.append(result)
+        # Update offset (accounting for paragraph length and newline characters)
+        offset += len(paragraph) + 2
 
-        # 更新偏移量（每个段落的长度加上换行符）
-        offset += len(paragraph) + 2  # 加1是为了包含换行符
-
-    # 合并结果
+    # Merge results from all paragraphs into a single list
     merged_results = []
     for result in ner_results:
-        merged_results.extend(result)  # 将每个段落的结果合并成一个列表
+        merged_results.extend(result)
 
     return merged_results
 
@@ -313,7 +304,7 @@ def process():
             float(sum(confidence_scores)) / len(confidence_scores) if confidence_scores else 0.0
         )
 
-        privacy_score = calculate_privacy_score(ner_results)
+        privacy_score = calculate_privacy_risk_level(ner_results)
 
         result_str = ""
         for segment in segments:
@@ -357,15 +348,17 @@ def process():
 def process_deid():
     text = request.form['text']
     ner_results = process_text_by_paragraphs(text, nlp_pipeline)
-    privacy_score_before = calculate_privacy_score(ner_results)
+    privacy_score_before = calculate_privacy_risk_level(ner_results)
 
     entities = []
     for entity in ner_results:
+        confidence = float(entity.get('score', 0))
         entities.append({
             'entity_group': entity['entity_group'],
             'start': entity['start'],
             'end': entity['end'],
-            'text': text[entity['start']:entity['end']]
+            'text': text[entity['start']:entity['end']],
+            'score': confidence
         })
 
     entity_groups = list(set([e['entity_group'] for e in entities]))
@@ -393,8 +386,10 @@ def apply_deid():
 
     for ent in sorted(entities, key=lambda x: x['start'], reverse=True):
         eg = ent['entity_group']
-        confidence = float(ent.get('confidence', 0))
-
+        confidence = float(ent.get('score', 0))
+        print(eg)
+        print(confidence)
+        print(threshold)
         if eg not in strategies or confidence < threshold:
             continue
 
@@ -422,7 +417,7 @@ def apply_deid():
 
     replaced_text = " ".join(replaced_text.split())
     ner_results_after = process_text_by_paragraphs(replaced_text, nlp_pipeline)
-    privacy_score_after = calculate_privacy_score(ner_results_after)
+    privacy_score_after = calculate_privacy_risk_level(ner_results_after)
 
     return jsonify({
         'deidentified_text': replaced_text,
@@ -477,7 +472,7 @@ def process_file():
             # 如果没有实体，跳过此行
             if not ner_results:
                 continue
-            privacy_risk_level_before = calculate_privacy_score(ner_results)
+            privacy_risk_level_before = calculate_privacy_risk_level(ner_results)
 
             # 进行实体去标识化
             replaced_text = original_text
@@ -528,7 +523,7 @@ def process_file():
 
             # Calculate risk level
             ner_results_after = process_text_by_paragraphs(replaced_text, nlp_pipeline)
-            privacy_risk_level_after = calculate_privacy_score(ner_results_after)
+            privacy_risk_level_after = calculate_privacy_risk_level(ner_results_after)
             total_privacy_risk_level_before += privacy_risk_level_before
             total_privacy_risk_level_after += privacy_risk_level_after
             count += 1

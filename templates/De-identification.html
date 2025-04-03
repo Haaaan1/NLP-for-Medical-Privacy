@@ -349,84 +349,79 @@
         let originalText = "";
         let entities = [];
         let entityGroups = [];
-        let userStrategies = {};
+        let userStrategies = (function() {
+            try {
+                const stored = sessionStorage.getItem("deidUserStrategies");
+                return stored ? JSON.parse(stored) : {};
+            } catch(e) {
+                return {};
+            }
+        })();
         let threshold = 0;
         let privacy_score_before = 0;
         let privacy_score_after = 0;
         let language = "en";
 
+        // Language selection change handler
         $('input[name="language"]').on('change', function() {
             language = $(this).val();
         });
 
-        // 滑块事件：更新显示值
+        // Threshold slider handler
         $('#threshold-slider').on('input', function () {
             threshold = parseFloat($(this).val());
             $('#slider-value').text(threshold.toFixed(2));
         });
 
-        // 当鼠标悬浮在图标上时
+        // Info icon hover handler
         $('#info-icon').hover(function(event) {
             $('#info-popup').show();
-
-            // 获取图标的坐标
             const iconOffset = $(this).offset();
-
-            // 设置悬浮框显示在图标的右侧
             $('#info-popup').css({
-                left: iconOffset.left + 20 + 'px',  // 偏移20px来确保悬浮框不与图标重叠
-                top: iconOffset.top - 10 + 'px'    // 垂直上方微调10px
+                left: iconOffset.left + 20 + 'px',
+                top: iconOffset.top - 10 + 'px'
             });
         }, function() {
             $('#info-popup').hide();
         });
 
-        // 点击“Configure De-identification”
+        // Configure De-identification button handler
         $('#configure-deid-btn').click(function () {
             const text = $('#deid-input').val().trim();
             if (text === "") {
                 alert("Please enter some text for de-identification.");
                 return;
             }
-            // 打开弹窗
+
             $('#deid-config-modal').css('display', 'block');
-            // 显示spinner
             $('#spinner').show();
             $('#deid-config').hide();
 
-            // 向后端请求 NER 结果
             $.ajax({
                 url: '/process_deid',
                 type: 'POST',
-                data: {
-                    text: text,
-                    threshold: threshold},
+                data: { text: text, threshold: threshold },
                 success: function (response) {
                     originalText = response.original_text;
                     entities = response.entities;
                     entityGroups = response.entity_groups;
                     privacy_score_before = Math.floor(response.privacy_score_before * 100);
-
                     if (entityGroups.length > 0) {
                         renderPrivacyScore(privacy_score_before);
                         renderEntityConfig(entityGroups);
                     } else {
                         $('#spinner').hide();
-                        $('#deid-config')
-                            .html("<p>No entities found. Please try another text or check your NER model.</p>")
-                            .show();
+                        $('#deid-config').html("<p>No entities found. Please try another text or check your NER model.</p>").show();
                     }
                 },
                 error: function () {
                     $('#spinner').hide();
-                    $('#deid-config')
-                        .html("<p>An error occurred while processing the text. Please try again.</p>")
-                        .show();
+                    $('#deid-config').html("<p>An error occurred while processing the text. Please try again.</p>").show();
                 }
             });
         });
 
-        // 关闭弹窗事件
+        // Modal close handlers
         $('.close-modal').click(function() {
             $('#deid-config-modal').css('display', 'none');
         });
@@ -437,67 +432,70 @@
         });
 
         function renderPrivacyScore(score) {
-            // 显示隐私分数容器
             $('#privacy-score-container').show();
-
-            // 更新分数值显示
             $('#privacy-score-value').text(`Privacy Risk Level: ${score}`);
-
-            // 更新进度条宽度
             let width = score + "%";
             $('#privacy-score-bar').css('width', width);
-
-            // 根据分数值更新颜色（从蓝到红）
             if (score <= 20) {
-                $('#privacy-score-bar').css('background', 'blue');  // 蓝色
+                $('#privacy-score-bar').css('background', 'blue');
             } else if (score <= 40) {
-                $('#privacy-score-bar').css('background', 'green'); // 绿色
+                $('#privacy-score-bar').css('background', 'green');
             } else if (score <= 60) {
-                $('#privacy-score-bar').css('background', 'yellow'); // 黄色
+                $('#privacy-score-bar').css('background', 'yellow');
             } else if (score <= 80) {
-                $('#privacy-score-bar').css('background', 'orange'); // 橙色
+                $('#privacy-score-bar').css('background', 'orange');
             } else {
-                $('#privacy-score-bar').css('background', 'red');    // 红色
+                $('#privacy-score-bar').css('background', 'red');
             }
         }
 
-        // 动态生成配置表
         function renderEntityConfig(groups) {
+            $('#spinner').show();
+            $('#deid-config').hide();
+
             let html = "";
             groups.forEach(function(g) {
-                let selectedStrategy = userStrategies[g] || "none";
+                let selectedStrategy = "none";
+                let generalizeLevel = "mild";
 
-                // 仅当 g === "AGE" 或 "DATE" 时提供 "Generalize"
+                if (userStrategies[g]) {
+                    if (userStrategies[g].startsWith("generalize")) {
+                        selectedStrategy = "generalize";
+                        generalizeLevel = userStrategies[g].split("_")[1] || "mild";
+                    } else {
+                        selectedStrategy = userStrategies[g];
+                    }
+                }
+
                 let generalizeOption = "";
                 if (g === "AGE" || g === "DATE") {
-                    generalizeOption = `<option value="generalize"
-                        ${selectedStrategy.startsWith("generalize") ? "selected" : ""}>Generalize</option>`;
+                    generalizeOption = `<option value="generalize" ${selectedStrategy === "generalize" ? "selected" : ""}>Generalize</option>`;
                 }
 
                 html += `
-                <tr>
-                    <td>${g}</td>
-                    <td>
-                        <select class="strategy-select" data-group="${g}">
-                            <option value="none" ${selectedStrategy === "none" ? "selected" : ""}>None</option>
-                            <option value="delete" ${selectedStrategy === "delete" ? "selected" : ""}>Delete</option>
-                            ${generalizeOption}
-                            <option value="pseudonymize" ${selectedStrategy === "pseudonymize" ? "selected" : ""}>Pseudonymize</option>
-                        </select>
-                        <select class="sub-menu-select" data-group="${g}">
-                            <option value="mild">mild</option>
-                            <option value="moderate">moderate</option>
-                            <option value="severe">severe</option>
-                        </select>
-                    </td>
-                </tr>
-                `;
+        <tr>
+            <td>${g}</td>
+            <td>
+                <select class="strategy-select" data-group="${g}">
+                    <option value="none" ${selectedStrategy === "none" ? "selected" : ""}>None</option>
+                    <option value="delete" ${selectedStrategy === "delete" ? "selected" : ""}>Delete</option>
+                    ${generalizeOption}
+                    <option value="pseudonymize" ${selectedStrategy === "pseudonymize" ? "selected" : ""}>Pseudonymize</option>
+                </select>
+                <select class="sub-menu-select" data-group="${g}">
+                    <option value="mild" ${generalizeLevel === 'mild' ? 'selected' : ''}>mild</option>
+                    <option value="moderate" ${generalizeLevel === 'moderate' ? 'selected' : ''}>moderate</option>
+                    <option value="severe" ${generalizeLevel === 'severe' ? 'selected' : ''}>severe</option>
+                </select>
+            </td>
+        </tr>
+        `;
             });
 
             $('#config-table-body').html(html);
 
-            // 当主下拉改变时：若选 "generalize" => 显示二级下拉
-            $('.strategy-select').on('change', function() {
+            // 初始化显示状态 - 这是关键修改部分
+            $('.strategy-select').each(function() {
                 const group = $(this).data('group');
                 const selected = $(this).val();
                 const $subMenu = $(this).closest('td').find('.sub-menu-select');
@@ -509,31 +507,28 @@
                 }
             });
 
-            // 如果 userStrategies[g] 已经是 "generalize_mild" 之类 => 回显
-            groups.forEach(function(g) {
-                if (userStrategies[g] && userStrategies[g].startsWith("generalize_")) {
-                    let level = userStrategies[g].split("_")[1];
-                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
-                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
-                    // 设置主下拉为 "generalize"
-                    $rowSelect.val("generalize");
-                    // 显示二级下拉
-                    $subSelect.show();
-                    // 选中 mild / moderate / severe
-                    $subSelect.val(level);
-                } else if (userStrategies[g] && userStrategies[g] === "pseudonymize") {
-                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
-                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
-                    // 设置主下拉为 "pseudonymize"
-                    $rowSelect.val("pseudonymize");
-                    // 隐藏二级下拉
-                    $subSelect.hide();
+            $('.strategy-select').on('change', function() {
+                const group = $(this).data('group');
+                const selected = $(this).val();
+                const $subMenu = $(this).closest('td').find('.sub-menu-select');
+
+                if (selected === "generalize") {
+                    $subMenu.show();
+                    const level = $subMenu.val();
+                    userStrategies[group] = "generalize_" + level;
                 } else {
-                    // 默认隐藏二级下拉
-                    let $rowSelect = $(`.strategy-select[data-group="${g}"]`);
-                    let $subSelect = $(`.sub-menu-select[data-group="${g}"]`);
-                    $rowSelect.val("none");
-                    $subSelect.hide();
+                    $subMenu.hide();
+                    userStrategies[group] = selected;
+                }
+                sessionStorage.setItem("deidUserStrategies", JSON.stringify(userStrategies));
+            });
+
+            $('.sub-menu-select').on('change', function() {
+                const group = $(this).data('group');
+                const level = $(this).val();
+                if ($(`.strategy-select[data-group="${group}"]`).val() === "generalize") {
+                    userStrategies[group] = "generalize_" + level;
+                    sessionStorage.setItem("deidUserStrategies", JSON.stringify(userStrategies));
                 }
             });
 
@@ -541,7 +536,7 @@
             $('#deid-config').show();
         }
 
-        // 点击“Apply De-identification”
+        // Apply De-identification button handler
         $('#apply-deid-btn').click(function () {
             let strategies = {};
             $('.strategy-select').each(function () {
@@ -551,7 +546,6 @@
                     const level = $(this).closest('td').find('.sub-menu-select').val();
                     strategy = "generalize_" + level;
                 }
-
                 if (strategy !== "none") {
                     strategies[group] = strategy;
                     userStrategies[group] = strategy;
@@ -560,12 +554,13 @@
                 }
             });
 
+            sessionStorage.setItem("deidUserStrategies", JSON.stringify(userStrategies));
+
             if (Object.keys(strategies).length === 0) {
                 alert("Please select at least one de-identification strategy.");
                 return;
             }
 
-            // 向后端发送
             $.ajax({
                 url: '/apply_deid',
                 type: 'POST',
@@ -581,7 +576,6 @@
                     $('#deid-result').html("<p>" + response.deidentified_text + "</p>");
                     privacy_score_after = Math.floor(response.privacy_score_after * 100);
                     renderPrivacyDashboard(privacy_score_before, privacy_score_after);
-                    // 关闭弹窗
                     $('#deid-config-modal').css('display', 'none');
                 },
                 error: function () {
@@ -589,100 +583,86 @@
                 }
             });
         });
-        // 渲染隐私仪表盘
-        function renderPrivacyDashboard(before, after) {
-            // 初始化 ECharts 实例
-            let myEchart = echarts.init(document.getElementById('gaugePlot'));
 
-            // 设置仪表盘配置项
+        function renderPrivacyDashboard(before, after) {
+            let myEchart = echarts.init(document.getElementById('gaugePlot'));
             let option = {
                 series: [
                     {
-                        type: 'gauge', // 仪表盘类型
-                        min: 0,        // 最小值
-                        max: 100,      // 最大值
-                        splitNumber: 10, // 分割段数
+                        type: 'gauge',
+                        min: 0,
+                        max: 100,
+                        splitNumber: 10,
                         axisLine: {
                             lineStyle: {
-                                width: 20, // 轴线宽度
+                                width: 20,
                                 color: [
-                                    [0.3, '#67e0e3'], // 0-30% 浅色
-                                    [0.7, '#37a2da'], // 30%-70% 中等色
-                                    [1, '#fd666d']    // 70%-100% 深色
+                                    [0.3, '#67e0e3'],
+                                    [0.7, '#37a2da'],
+                                    [1, '#fd666d']
                                 ]
                             }
                         },
                         pointer: {
-                            itemStyle: {
-                                color: 'auto' // 指针颜色自动匹配
-                            }
+                            itemStyle: { color: 'auto' }
                         },
                         axisTick: {
-                            distance: -20, // 刻度线与轴线的距离
-                            length: 8,     // 刻度线长度
-                            lineStyle: {
-                                color: '#fff', // 刻度线颜色
-                                width: 2
-                            }
+                            distance: -20,
+                            length: 8,
+                            lineStyle: { color: '#fff', width: 2 }
                         },
                         splitLine: {
-                            distance: -20, // 分割线与轴线的距离
-                            length: 20,   // 分割线长度
-                            lineStyle: {
-                                color: '#fff', // 分割线颜色
-                                width: 4
-                            }
+                            distance: -20,
+                            length: 20,
+                            lineStyle: { color: '#fff', width: 4 }
                         },
                         axisLabel: {
-                            color: 'auto', // 刻度标签颜色
-                            distance: 40,   // 刻度标签与轴线的距离
+                            color: 'auto',
+                            distance: 40,
                             fontSize: 14
                         },
                         title: {
                             show: true,
-                            offsetCenter: [0, '70%'], // 标题位置
+                            offsetCenter: [0, '70%'],
                             fontSize: 16,
                             color: '#333'
                         },
                         detail: {
                             fontSize: 24,
-                            offsetCenter: [0, '40%'], // 详情位置
-                            valueAnimation: true,     // 数值动画
-                            formatter: '{value}',    // 格式化显示
+                            offsetCenter: [0, '40%'],
+                            valueAnimation: true,
+                            formatter: '{value}',
                             color: 'auto'
                         },
                         data: [
-                            { value: before, name: 'Before' }, // 第一个指针
-                            { value: after, name: 'After' }    // 第二个指针
+                            { value: before, name: 'Before' },
+                            { value: after, name: 'After' }
                         ]
                     }
                 ]
             };
 
-            // 动态修改Before和After文本的位置，避免重叠
             option.series[0].data = [
                 {
                     value: before,
                     name: 'Before',
-                    title: { offsetCenter: ['-40%', '80%'] }, // 修改位置
-                    detail: { offsetCenter: ['-40%', '95%'] } // 修改位置
+                    title: { offsetCenter: ['-40%', '80%'] },
+                    detail: { offsetCenter: ['-40%', '95%'] }
                 },
                 {
                     value: after,
                     name: 'After',
-                    title: { offsetCenter: ['40%', '80%'] },  // 修改位置
-                    detail: { offsetCenter: ['40%', '95%'] }  // 修改位置
+                    title: { offsetCenter: ['40%', '80%'] },
+                    detail: { offsetCenter: ['40%', '95%'] }
                 }
             ];
 
-            // 设置配置项并渲染图表
             myEchart.setOption(option);
         }
 
-        // 初始化隐私分数仪表盘
         renderPrivacyDashboard(privacy_score_before, privacy_score_after);
 
-        // Clear All
+        // Clear All button handler
         $('#clear-deid-btn').click(function() {
             $('.strategy-select').each(function() {
                 const group = $(this).data('group');
@@ -690,26 +670,24 @@
                 $(this).closest('td').find('.sub-menu-select').hide();
                 delete userStrategies[group];
             });
+            sessionStorage.setItem("deidUserStrategies", JSON.stringify(userStrategies));
         });
 
-        // 点击“推荐 Strategies”按钮
+        // Recommend Strategies button handler
         $('#recommend-btn').click(function() {
             $('.strategy-select').each(function() {
                 const group = $(this).data('group');
                 let recommendedStrategy = 'none';
-
                 if (group === "AGE" || group === "DATE") {
                     recommendedStrategy = "generalize";
                 } else if (group === "DURATION") {
                     recommendedStrategy = "pseudonymize";
                 }
-
                 $(this).val(recommendedStrategy);
                 const $subMenu = $(this).closest('td').find('.sub-menu-select');
-
                 if (recommendedStrategy === "generalize") {
                     $subMenu.show();
-                    $subMenu.val("mild"); // 设置为 mild
+                    $subMenu.val("mild");
                     userStrategies[group] = "generalize_mild";
                 } else if (recommendedStrategy === "pseudonymize") {
                     $subMenu.hide();
@@ -719,14 +697,15 @@
                     delete userStrategies[group];
                 }
             });
+            sessionStorage.setItem("deidUserStrategies", JSON.stringify(userStrategies));
         });
 
+        // Go to File button handler
         $('#go-to-file-btn').click(function () {
             window.location.href = '/deidentification/file';
         });
     });
 
-    // 自适应文本框
     function autoResize(textarea) {
         textarea.style.height = 'auto';
         textarea.style.height = (textarea.scrollHeight) + 'px';
