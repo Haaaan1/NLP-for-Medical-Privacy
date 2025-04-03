@@ -474,7 +474,10 @@
                         const url = URL.createObjectURL(blob);
                         const link = document.createElement('a');
                         link.href = url;
-                        link.download = 'de-identified_data.csv';
+                        const originalFilename = response._original_filename || 'de-identified_data.csv';
+                        const downloadFilename = originalFilename.replace(/(\.\w+)?$/, '_deidentified$&');
+                        link.download = downloadFilename;
+
                         link.click();
                         URL.revokeObjectURL(url);
                     });

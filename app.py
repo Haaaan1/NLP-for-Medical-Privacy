@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from transformers import pipeline
 import random
 import re
@@ -441,11 +441,6 @@ def process_file():
         selected_column = selected_column.replace('\r\n', '')
         language = request.form.get('language', 'en')
 
-        # 打印接收到的字段，用于调试
-        print(f"Selected column: {selected_column}")
-        print(f"Threshold: {threshold}")
-        print(f"Entity strategies: {entity_strategies}")
-
         # 读取CSV文件
         df = pd.read_csv(io.BytesIO(file.read()))
 
@@ -453,112 +448,93 @@ def process_file():
         if selected_column not in df.columns:
             return jsonify({'error': f"Column '{selected_column}' not found in the CSV file"}), 400
 
-        # 根据用户选择的列进行去标识化处理
-        results = []
+        # 创建结果DataFrame，保留所有原始列
+        result_df = df.copy()
 
         total_privacy_risk_level_before = 0
         total_privacy_risk_level_after = 0
         count = 0
 
         for index, row in df.iterrows():
-            # 获取原始文本（假设选中的列）
-            original_text = row.get(selected_column, '')  # 使用正确的列名
-            if not original_text:
-                continue  # 如果没有文本，则跳过
+            original_text = row.get(selected_column, '')
+            if pd.isna(original_text) or not str(original_text).strip():
+                continue
 
             # 获取命名实体识别（NER）结果
-            ner_results = process_text_by_paragraphs(original_text, nlp_pipeline)
+            ner_results = process_text_by_paragraphs(str(original_text), nlp_pipeline)
 
-            # 如果没有实体，跳过此行
             if not ner_results:
                 continue
-            privacy_risk_level_before = calculate_privacy_risk_level(ner_results)
 
-            # 进行实体去标识化
-            replaced_text = original_text
+            privacy_risk_level_before = calculate_privacy_risk_level(ner_results)
+            replaced_text = str(original_text)
             pseudonym_counters = {}
 
-            # 处理每个实体，根据其策略进行去标识化
-            # 需要按 start 从后往前排序，避免覆盖
-            for entity in sorted(ner_results, key=lambda x: x['start'], reverse=True):  # 重要：按start从后向前处理
+            # 处理每个实体
+            for entity in sorted(ner_results, key=lambda x: x['start'], reverse=True):
                 entity_group = entity['entity_group']
                 confidence = float(entity.get('score', 0))
 
-                # 检查实体组是否在策略中
                 if entity_group not in entity_strategies or confidence < threshold:
                     continue
 
-                # 获取该实体的去标识化策略
                 strategy = entity_strategies[entity_group]
                 start, end = entity['start'], entity['end']
-                text_slice = original_text[start:end]
+                text_slice = str(original_text)[start:end]
 
-                # 根据策略进行处理
                 if strategy == "delete":
-                    if language == "en":
-                        replaced_text = do_replacement(replaced_text, start, end, "[REDACTED]")
-                    else:
-                        replaced_text = do_replacement(replaced_text, start, end, "[ZENSIERT]")
+                    replacement = "[REDACTED]" if language == "en" else "[ZENSIERT]"
+                    replaced_text = do_replacement(replaced_text, start, end, replacement)
                 elif strategy == "pseudonymize":
                     if entity_group not in pseudonym_counters:
                         pseudonym_counters[entity_group] = 0
                     pseudonym_counters[entity_group] += 1
                     letter = chr(65 + (pseudonym_counters[entity_group] - 1) % 26)
-                    # 根据语言可以调整伪名格式，这里暂时保持不变
                     replacement = f"{entity_group}_{letter}"
                     replaced_text = do_replacement(replaced_text, start, end, replacement)
                 elif strategy.startswith("generalize"):
                     level = strategy.split("_")[1]
                     if entity_group == "AGE":
-                        generalized = generalize_age(text_slice, level, language)
+                        replacement = generalize_age(text_slice, level, language)
                     elif entity_group == "DATE":
-                        generalized = generalize_date(text_slice, level, language)
+                        replacement = generalize_date(text_slice, level, language)
                     else:
-                        generalized = "[GENERALIZED]" if language == "en" else "[GENERALIERT]"
-                    replaced_text = do_replacement(replaced_text, start, end, generalized)
+                        replacement = "[GENERALIZED]" if language == "en" else "[GENERALIERT]"
+                    replaced_text = do_replacement(replaced_text, start, end, replacement)
 
-            results.append({
-                'De-identified_text': replaced_text
-            })
+            # 更新结果DataFrame
+            result_df.at[index, selected_column] = replaced_text
 
-            # Calculate risk level
+            # 计算风险级别
             ner_results_after = process_text_by_paragraphs(replaced_text, nlp_pipeline)
             privacy_risk_level_after = calculate_privacy_risk_level(ner_results_after)
             total_privacy_risk_level_before += privacy_risk_level_before
             total_privacy_risk_level_after += privacy_risk_level_after
             count += 1
 
-        # 确保结果不为空
-        if not results:
-            print("No valid data was processed. Returning empty result.")
+        if count == 0:
             return jsonify({'error': 'No valid data was processed.'}), 400
-        # 计算平均值
-        if count > 0:
-            avg_privacy_risk_level_before = total_privacy_risk_level_before / count
-            avg_privacy_risk_level_after = total_privacy_risk_level_after / count
-        else:
-            avg_privacy_risk_level_before = 0
-            avg_privacy_risk_level_after = 0
 
-        # 输出平均值
-        print(f"Average Privacy Risk Level Before De-identification: {avg_privacy_risk_level_before}")
-        print(f"Average Privacy Risk Level After De-identification: {avg_privacy_risk_level_after}")
+        # 计算平均风险级别
+        avg_privacy_risk_level_before = total_privacy_risk_level_before / count
+        avg_privacy_risk_level_after = total_privacy_risk_level_after / count
 
-        # 将去标识化结果转换为CSV格式并返回
-        result_df = pd.DataFrame(results)
+        # 将结果转换为CSV格式字符串
         output = io.StringIO()
         result_df.to_csv(output, index=False)
-        output.seek(0)
+        csv_content = output.getvalue()
 
-        # 返回去标识化后的CSV内容
+        # 返回与前端兼容的响应格式
         return jsonify({
-            'result': output.getvalue(),
+            'result': csv_content,  # 保持CSV字符串格式
             'avg_privacy_risk_level_before': avg_privacy_risk_level_before,
-            'avg_privacy_risk_level_after': avg_privacy_risk_level_after
+            'avg_privacy_risk_level_after': avg_privacy_risk_level_after,
+            # 添加原始文件名到响应中但不影响前端现有逻辑
+            '_original_filename': file.filename
         })
 
     except Exception as e:
-        print(f"Error: {e}")  # 打印详细错误信息
+        print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
