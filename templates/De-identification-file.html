@@ -1,8 +1,26 @@
+<!--
+    File: De-identification-file.html
+
+    Description:
+    This HTML file defines the user interface for de-identification file-upload page.
+    It allows users to upload csv file and configure de-identification strategies.
+    The interface supports configuration of entity-specific anonymization strategies,
+    threshold-based filtering of entity confidence scores, and displays both original and
+    de-identified results. Additionally, it features a privacy risk dashboard to visualize
+    the sensitivity level of the text before and after de-identification.
+
+    Main Components:
+    - Input panel for user to upload file
+    - Output panel for download de-identified file and privacy score
+    - Panel for configuring entity-specific de-identification strategies
+    - JavaScript logic for UI behavior, AJAX communication with the backend, and privacy risk visualization
+-->
+
 {% extends "base.html" %}
 
 {% block content %}
 <style>
-    /* 弹窗基础样式 */
+    /* Modal styling */
     .modal {
         display: none;
         position: fixed;
@@ -39,7 +57,7 @@
         text-decoration: none;
     }
 
-    /* 主体布局 */
+    /* Main layout */
     .content {
         display: flex;
         flex-wrap: wrap;
@@ -51,7 +69,7 @@
         box-sizing: border-box;
     }
 
-    /* 表格样式 */
+    /* Table styling */
     table {
         width: 100%;
         border-collapse: collapse;
@@ -72,7 +90,7 @@
         background-color: #f9f9f9;
     }
 
-    /* 按钮样式 */
+    /* Button styling */
     .fancy-button {
         background-color: #4CAF50;
         border: none;
@@ -87,7 +105,7 @@
         background-color: #45a049;
     }
 
-    /* 加载动画 */
+    /* Loading spinner */
     .spinner {
         display: none;
         border: 8px solid #f3f3f3;
@@ -102,6 +120,7 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+
     #privacy-score-dashboard {
         margin-top: 10px;
         text-align: center;
@@ -114,11 +133,10 @@
         height: 300px;
         margin: 0 auto;
     }
-
 </style>
 
 <div class="content">
-    <!-- 左侧面板：文件上传、标签选择和策略设置 -->
+    <!-- Left panel: File upload, configuration settings -->
     <div class="left-panel">
         <h2>Upload and Configure</h2>
         <div>
@@ -166,7 +184,7 @@
         </button>
     </div>
 
-    <!-- 右侧面板：显示去标识化后的结果 -->
+    <!-- Right panel: Provide download portal and display privacy risk -->
     <div class="right-panel">
         <h2>De-identified Result</h2>
         <button id="download-btn" class="fancy-button" style="display: none;">
@@ -181,7 +199,6 @@
                 Privacy Risk Level After De-identification
                 <span id="info-icon" style="cursor: pointer; color: #007BFF;">&#9432;</span>
             </h4>
-            <!-- 临时弹窗 -->
             <div id="info-popup" style="display:none; position: absolute; padding: 10px 20px;
                            background-color: #f9f9f9; border: 1px solid #ddd;
                            border-radius: 8px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
@@ -196,7 +213,7 @@
     </div>
 </div>
 
-<!-- 文件上传弹窗 -->
+<!-- File upload pop-up window -->
 <div id="file-upload-modal" class="modal">
     <div class="modal-content">
         <span class="close-modal">&times;</span>
@@ -207,10 +224,10 @@
 
 <script>
     $(document).ready(function () {
-        let columns = []; // 存储CSV列名
-        let selectedColumns = []; // 用户选择的列
-        let threshold = 0.8; // 默认阈值
-        let userStrategies = {}; // 存储用户选择的策略
+        let columns = []; // Store CSV column names
+        let selectedColumns = []; // User-selected columns
+        let threshold = 0.8;
+        let userStrategies = {}; // Store user-selected strategies
         let privacy_score_before = 0;
         let privacy_score_after = 0;
         let language = "en";
@@ -253,7 +270,6 @@
             window.location.href = "http://127.0.0.1:5000/deidentification";
         });
 
-        // 当鼠标悬浮在图标上时
         $('#info-icon').hover(function(event) {
             $('#info-popup').show();
             const iconOffset = $(this).offset();
@@ -265,17 +281,17 @@
             $('#info-popup').hide();
         });
 
-        // 打开文件上传弹窗
+        // Open the file upload pop-up window
         $('#upload-file-btn').click(function () {
             $('#file-upload-modal').css('display', 'block');
         });
 
-        // 关闭文件上传弹窗
+        // Close the file upload pop-up window
         $('.close-modal').click(function () {
             $('#file-upload-modal').css('display', 'none');
         });
 
-        // 读取文件并展示列选择和阈值
+        // Read the file and display the column selection and threshold
         $('#file-input').change(function (e) {
             const file = e.target.files[0];
             if (!file) {
@@ -298,11 +314,10 @@
             reader.readAsText(file);
         });
 
-        // 修改后的渲染列选择器，自动勾选第一列
+        // Render the column selector and automatically check the first column
         function renderColumnSelection(columns) {
             let html = '';
             columns.forEach((col, index) => {
-                // 自动勾选第一列（如果只有一列或多列，均勾选第一个）
                 let checked = index === 0 ? "checked" : "";
                 html += `<input type="radio" class="column-checkbox" name="column-selection" value="${col}" ${checked}>${col}<br>`;
             });
@@ -315,7 +330,7 @@
             $('#progress-text').text(progress + '%');
         }
 
-        // 渲染标签选择器和策略选择器
+        // Render the label selector and policy selector
         function renderEntityConfig(groups) {
             let html = "";
             groups.forEach(function(g) {
@@ -380,7 +395,7 @@
             $('#deid-config').show();
         }
 
-        // 渲染推荐策略功能
+        // Render recommendation strategy function
         $('#recommend-btn').click(function() {
             $('.strategy-select').each(function() {
                 const group = $(this).data('group');
@@ -403,27 +418,27 @@
             });
         });
 
-        // 在 process 按钮中检查必选项：列、语言、阈值和至少一个实体策略
+        // Check the required options in the process button: column, language, threshold, and at least one entity strategy
         $('#process-file-btn').click(function () {
-            // 检查列是否选中
+            // Check whether the column is selected
             if ($('.column-checkbox:checked').length === 0) {
-                alert("请先选择一个列进行去标识化。");
+                alert("Please select a column for de-identification.");
                 return;
             }
-            // 检查语言是否选中（radio 默认必选，但此处可加保险）
+            // Check whether the language is selected
             if (!$('input[name="language"]:checked').val()) {
-                alert("请选择语言。");
+                alert("Please select a language.");
                 return;
             }
-            // 检查阈值是否填写且有效
+            // Check threshold
             let thresholdVal = $('#threshold').val();
             if (thresholdVal === "" || isNaN(thresholdVal)) {
-                alert("请设置有效的阈值。");
+                alert("Please enter a valid threshold.");
                 return;
             }
-            // 检查是否至少选择了一个实体的策略（非 "none"）
+            // Check whether at least one entity's policy has been selected
             if ($('.strategy-select').filter(function() { return $(this).val() !== "none"; }).length === 0) {
-                alert("请至少为一个实体选择去标识策略。");
+                alert("Please select a de-identification strategy for at least one entity.");
                 return;
             }
             showSpinner();

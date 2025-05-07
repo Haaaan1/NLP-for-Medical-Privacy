@@ -164,7 +164,7 @@ def generalize_date(date_str, level="mild", language="en"):
     has_month = any(part.isdigit() and 1 <= int(part) <= 12 for part in parts)
 
     if level == "mild":
-        result = f"{year}-{parsed_date.month:02d}" if has_month else f"{year}-XX"
+        result = f"{year}-{parsed_date.month:02d}" if has_month else f"{year}"
     elif level == "moderate":
         result = f"{year}"
     elif level == "severe":
@@ -174,26 +174,7 @@ def generalize_date(date_str, level="mild", language="en"):
     else:
         return "[DATE]" if language == "en" else "[DATUM]"
 
-    # Append language-specific suffix
-    if language == "de":
-        if level == "mild":
-            suffix = " (Jahr-Monat)" if has_month else " (Jahr-XX)"
-        elif level == "moderate":
-            suffix = " (Jahr)"
-        elif level == "severe":
-            suffix = " (ungefähr)"
-        else:
-            suffix = ""
-    else:
-        if level == "mild":
-            suffix = " (Year-Month)" if has_month else " (Year-XX)"
-        elif level == "moderate":
-            suffix = " (Year)"
-        elif level == "severe":
-            suffix = " (approx.)"
-        else:
-            suffix = ""
-    return result + suffix
+    return result
 
 
 def do_replacement(orig, start, end, replacement):
@@ -428,12 +409,12 @@ def apply_deid():
 @app.route('/process_file', methods=['POST'])
 def process_file():
     try:
-        # 获取上传的文件
+        # Get the uploaded file
         file = request.files['file']
         if not file:
             return jsonify({'error': 'No file uploaded'}), 400
 
-        # 获取传递的列名、阈值和实体策略
+        # Get selected column, threshold, and entity strategies
         selected_column = request.form.get('columns', '')
         threshold = float(request.form.get('threshold', 0))
         entity_strategies = json.loads(request.form.get('entity_strategies', '{}'))
@@ -441,14 +422,14 @@ def process_file():
         selected_column = selected_column.replace('\r\n', '')
         language = request.form.get('language', 'en')
 
-        # 读取CSV文件
+        # Read CSV file
         df = pd.read_csv(io.BytesIO(file.read()))
 
-        # 检查选中的列是否存在
+        # Check if the selected column exists
         if selected_column not in df.columns:
             return jsonify({'error': f"Column '{selected_column}' not found in the CSV file"}), 400
 
-        # 创建结果DataFrame，保留所有原始列
+        # Create result DataFrame with all original columns preserved
         result_df = df.copy()
 
         total_privacy_risk_level_before = 0
@@ -460,7 +441,7 @@ def process_file():
             if pd.isna(original_text) or not str(original_text).strip():
                 continue
 
-            # 获取命名实体识别（NER）结果
+            # Get NER results
             ner_results = process_text_by_paragraphs(str(original_text), nlp_pipeline)
 
             if not ner_results:
@@ -470,7 +451,7 @@ def process_file():
             replaced_text = str(original_text)
             pseudonym_counters = {}
 
-            # 处理每个实体
+            # Process each entity
             for entity in sorted(ner_results, key=lambda x: x['start'], reverse=True):
                 entity_group = entity['entity_group']
                 confidence = float(entity.get('score', 0))
@@ -502,10 +483,10 @@ def process_file():
                         replacement = "[GENERALIZED]" if language == "en" else "[GENERALIERT]"
                     replaced_text = do_replacement(replaced_text, start, end, replacement)
 
-            # 更新结果DataFrame
+            # Update result DataFrame
             result_df.at[index, selected_column] = replaced_text
 
-            # 计算风险级别
+            # Recalculate risk level
             ner_results_after = process_text_by_paragraphs(replaced_text, nlp_pipeline)
             privacy_risk_level_after = calculate_privacy_risk_level(ner_results_after)
             total_privacy_risk_level_before += privacy_risk_level_before
@@ -515,21 +496,20 @@ def process_file():
         if count == 0:
             return jsonify({'error': 'No valid data was processed.'}), 400
 
-        # 计算平均风险级别
+        # Calculate average risk levels
         avg_privacy_risk_level_before = total_privacy_risk_level_before / count
         avg_privacy_risk_level_after = total_privacy_risk_level_after / count
 
-        # 将结果转换为CSV格式字符串
+        # Convert result to CSV string
         output = io.StringIO()
         result_df.to_csv(output, index=False)
         csv_content = output.getvalue()
 
-        # 返回与前端兼容的响应格式
+        # Return response in frontend-compatible format
         return jsonify({
-            'result': csv_content,  # 保持CSV字符串格式
+            'result': csv_content,  # Keep as CSV string
             'avg_privacy_risk_level_before': avg_privacy_risk_level_before,
             'avg_privacy_risk_level_after': avg_privacy_risk_level_after,
-            # 添加原始文件名到响应中但不影响前端现有逻辑
             '_original_filename': file.filename
         })
 

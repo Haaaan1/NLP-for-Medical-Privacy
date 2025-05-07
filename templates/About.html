@@ -1,41 +1,32 @@
+<!--
+    File: About.html
+
+    Description:
+    This HTML file provides the "About" page of the platform.
+    It explains the purpose and key features of the medical data anonymization tool, highlighting its capabilities in protecting sensitive information in clinical texts.
+    -->
 {% extends "base.html" %}
 
 {% block content %}
 <body>
-    <div class="content">
-        <h2>About This Tool</h2>
-        <p>This tool is developed to help anonymize medical data using state-of-the-art NLP techniques.</p>
-    </div>
-    <div id="main" style="width: 600px;height:400px;">
+<div class="content">
+    <h2>About This Tool</h2>
+    <p>This medical data anonymization platform leverages state-of-the-art Natural Language Processing (NLP) techniques to protect sensitive information in unstructured clinical texts, supporting both English and German languages.</p>
+    <p>This tool is designed for the thesis work "Developing a Natural Language Processing Tool for Enhanced Privacy Protection in Medical Data " done at Communication Systems Group, University of Zurich, supervised by Mr. Weijie Niu, Dr. Alberto Huertas Celdran and Prof. Dr. Burkhard Stiller.</p>
+    <h3>Key Features</h3>
+    <ul>
+        <li><strong>Advanced Entity Recognition</strong>: Utilizes a high-precision Medical-NER model (85%+ accuracy for English, 75%+ for German) to identify sensitive patient information</li>
+        <li><strong>Flexible De-identification</strong>: Offers multiple protection strategies:
+            <ul>
+                <li>Deletion (complete redaction)</li>
+                <li>Pseudonymization (label-based replacement)</li>
+                <li>Generalization (for Age/Date with adjustable precision levels)</li>
+            </ul>
+        </li>
+        <li><strong>Privacy Risk Assessment</strong>: Computes weighted risk scores before and after processing to demonstrate effectiveness</li>
+        <li><strong>Multiple Input Formats</strong>: Accepts both plain text and CSV file uploads</li>
+    </ul>
+</div>
 
-    </div><script type="text/javascript">
-        // 基于准备好的dom，初始化echarts实例
-        const myChart = echarts.init(document.getElementById('main'));
-
-        // 指定图表的配置项和数据
-        const option = {
-            title: {
-                text: 'ECharts 入门示例'
-            },
-            tooltip: {},
-            legend: {
-                data: ['销量']
-            },
-            xAxis: {
-                data: ['衬衫', '羊毛衫', '雪纺衫', '裤子', '高跟鞋', '袜子']
-            },
-            yAxis: {},
-            series: [
-                {
-                    name: '销量',
-                    type: 'bar',
-                    data: [5, 20, 36, 10, 10, 20]
-                }
-            ]
-        };
-
-        // 使用刚指定的配置项和数据显示图表。
-        myChart.setOption(option);
-    </script>
 </body>
 {% endblock %}

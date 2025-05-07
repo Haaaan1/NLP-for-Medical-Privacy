@@ -1,3 +1,15 @@
+<!--
+    File: base.html
+
+    Description:
+    This HTML file serves as the base template for the ClinD (Clinical De-identification Platform) web application.
+    It includes the overall page structure, such as the navigation bar and main container for dynamic content.
+
+    Main Components:
+    - Navigation bar with links to NER (Named Entity Recognition), De-identification, and About pages
+    - Centralized styles and script resources (CSS, JS libraries)
+    - Integration of external libraries for functionality like jQuery and ECharts
+-->
 <!DOCTYPE html>
 <html lang="en">
 
@@ -12,11 +24,18 @@
 </head>
 
 <body>
-<!-- 导航栏 -->
+<!-- Navigation bar -->
 <nav class="navbar">
-    <div class="navbar-container">  <!-- 将原来的 container 修改为更独特的名称，避免与其他元素冲突 -->
+    <div class="navbar-container">
         <div class="nav-logo">
-            <h1>Medical Data Anonymization</h1>
+            <a href="{{ url_for('ner') }}" class="logo-link">
+                <span class="logo-text">Clin<span class="logo-highlight">D</span></span>
+                <span class="logo-subtext">Clinical De-identification Platform</span>
+            </a>
+            <div class="logo-image-group">
+                <img src="{{ url_for('static', filename='images/uzh_logo_e.jpg') }}" alt="UZH Logo" class="logo-img">
+                <img src="{{ url_for('static', filename='images/csg.png') }}" alt="CSG Logo" class="logo-img">
+            </div>
         </div>
         <ul class="nav-links">
             <li><a href="{{ url_for('ner') }}" id="nav-ner">NER</a></li>
@@ -26,7 +45,7 @@
     </div>
 </nav>
 
-<!-- 页面内容 -->
+
 <div class="main-container">
     {% block content %}{% endblock %}
 </div>

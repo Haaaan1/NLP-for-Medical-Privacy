@@ -1,8 +1,24 @@
+<!--
+    File: De-identification.html
+
+    Description:
+    This HTML file defines the user interface for de-identification page.
+    It allows users to input clinical summaries and configure de-identification strategies.
+    The interface supports configuration of entity-specific anonymization strategies,
+    threshold-based filtering of entity confidence scores, and displays both original and
+    de-identified results. Additionally, it features a privacy risk dashboard to visualize
+    the sensitivity level of the text before and after de-identification.
+
+    Main Components:
+    - Input panel for user text
+    - Output panel for de-identified text and privacy score
+    - Pop-up window for configuring entity-specific de-identification strategies
+    - JavaScript logic for UI behavior, AJAX communication with the backend, and privacy risk visualization
+-->
 {% extends "base.html" %}
 
 {% block content %}
 <style>
-    /* 弹窗基础样式：让弹窗更靠上 */
     .modal {
         display: none;
         position: fixed;
@@ -16,7 +32,7 @@
     }
     .modal-content {
         background-color: #fefefe;
-        margin: 5% auto; /* 原先10% => 5%，弹窗更靠上 */
+        margin: 5% auto;
         padding: 20px;
         border: 1px solid #888;
         width: 50%;
@@ -39,12 +55,11 @@
         text-decoration: none;
     }
 
-    /* 推荐按钮 */
     .recommend-btn {
         position: absolute;
         top: 20px;
-        right: 50px; /* 距离右边10px，close按钮右侧有40px空间 */
-        background-color: #008CBA; /* 蓝色 */
+        right: 50px;
+        background-color: #008CBA;
         color: white;
         border: none;
         padding: 6px 12px;
@@ -57,7 +72,6 @@
         background-color: #007B9E;
     }
 
-    /* 主体布局 */
     .content {
         display: flex;
         flex-wrap: wrap;
@@ -102,7 +116,6 @@
         margin-left: 10px;
     }
 
-    /* 按钮 */
     .fancy-button {
         background-color: #4CAF50;
         border: none;
@@ -117,7 +130,6 @@
         background-color: #45a049;
     }
 
-    /* 加载动画 */
     .spinner {
         display: none;
         border: 8px solid #f3f3f3;
@@ -133,7 +145,6 @@
         100% { transform: rotate(360deg); }
     }
 
-    /* 表格美化：减少行距、对齐表头 */
     #deid-config table {
         width: 100%;
         border-collapse: collapse;
@@ -155,11 +166,10 @@
         background-color: #f9f9f9;
     }
     #deid-config td {
-        padding: 4px; /* 缩小行间距 */
+        padding: 4px;
         vertical-align: middle;
     }
 
-    /* 下拉菜单样式 */
     .strategy-select, .sub-menu-select {
         font-family: "Segoe UI", sans-serif;
         font-size: 14px;
@@ -176,21 +186,19 @@
         vertical-align: middle;
         margin-left: 6px;
         width: 80px;
-        /* 默认隐藏（JS中切换） */
         display: none;
     }
 
-    /* 底部按钮布局 */
     .button-container {
         display: flex;
         justify-content: space-between;
         margin-top: 1rem;
     }
     .button-container .left-buttons {
-        /* 保持“Clear All”在左边 */
+
     }
     .button-container .right-buttons {
-        /* 将“Apply”按钮放在右边 */
+
     }
     #privacy-score-bar-container {
         width: 100%;
@@ -203,7 +211,7 @@
     #privacy-score-bar {
         height: 100%;
         border-radius: 10px;
-        width: 0; /* 初始宽度为0，动态更新 */
+        width: 0;
     }
 
     #privacy-score-value {
@@ -224,12 +232,6 @@
         margin: 0 auto;
     }
 
-    #privacy-score-labels {
-
-        font-weight: bold;
-        margin-bottom: 10px;
-    }
-
     #privacy-score-value {
         margin-top: 10px;
         font-size: 20px;
@@ -237,7 +239,7 @@
 </style>
 
 <div class="content">
-    <!-- 左侧输入 -->
+    <!-- Left panel -->
     <div class="left-panel">
         <h2 style="font-family: 'Segoe UI', sans-serif;">Input Text for De-identification</h2>
         <textarea id="deid-input" rows="8" placeholder="Enter medical summary here..." oninput="autoResize(this)"></textarea>
@@ -251,19 +253,18 @@
         </button>
     </div>
 
-    <!-- 右侧输出 -->
+    <!-- Right panel -->
     <div class="right-panel">
         <h2 style="font-family: 'Segoe UI', sans-serif;">De-identified Result</h2>
         <div id="deid-result" class="result-box">
             <p>Result will appear here...</p>
         </div>
-        <!-- 隐私分数仪表盘容器 -->
+        <!-- privacy score dashboard -->
         <div id="privacy-score-dashboard">
             <h4 style="display: inline-block; font-family: 'Segoe UI', sans-serif; margin-right: 10px;">
                 Privacy Risk Level After De-identification
                 <span id="info-icon" style="cursor: pointer; color: #007BFF;">&#9432;</span>
             </h4>
-            <!-- 临时弹窗 -->
             <div id="info-popup" style="display:none; position: absolute; padding: 10px 20px;
                            background-color: #f9f9f9; border: 1px solid #ddd;
                            border-radius: 8px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
@@ -278,7 +279,7 @@
     </div>
 </div>
 
-<!-- 弹窗 -->
+<!-- Pop-up -->
 <div id="deid-config-modal" class="modal">
     <div class="modal-content">
         <span class="close-modal">&times;</span>
@@ -322,11 +323,9 @@
                 </tr>
                 </thead>
                 <tbody id="config-table-body">
-                <!-- 动态生成 -->
                 </tbody>
             </table>
 
-            <!-- 底部按钮区域 -->
             <div class="button-container">
                 <div class="left-buttons">
                     <button id="clear-deid-btn" class="fancy-button"
@@ -494,7 +493,6 @@
 
             $('#config-table-body').html(html);
 
-            // 初始化显示状态 - 这是关键修改部分
             $('.strategy-select').each(function() {
                 const group = $(this).data('group');
                 const selected = $(this).val();
